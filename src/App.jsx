@@ -7,28 +7,21 @@ import Language from "./pages/Language";
 import RoleSelection from "./pages/RoleSelection";
 import MoodSelection from "./pages/MoodSelection";
 import Matching from "./pages/Matching";
+import Chat from "./pages/Chat";
 import NotFound from "./pages/NotFound";
 
 function App() {
   return (
     <Routes>
-
       <Route path="/" element={<Home />} />
-
       <Route path="/about" element={<About />} />
-
       <Route path="/volunteer" element={<Volunteer />} />
-
       <Route path="/language" element={<Language />} />
-
       <Route path="/role" element={<RoleSelection />} />
-
       <Route path="/mood" element={<MoodSelection />} />
-
       <Route path="/matching" element={<Matching />} />
-
+      <Route path="/chat" element={<Chat />} />
       <Route path="*" element={<NotFound />} />
-
     </Routes>
   );
 }
