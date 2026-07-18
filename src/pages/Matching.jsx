@@ -1,20 +1,64 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import {
+  joinWaitingQueue,
+  findMatch,
+  leaveQueue,
+} from "../services/matching";
 
 export default function Matching() {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const language = location.state?.language || "English";
+  const role = location.state?.role || "Friend";
+  const mood = location.state?.mood || "Lonely";
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      navigate("/chat");
-    }, 4000);
+    let queueId = null;
+    let stopped = false;
 
-    return () => clearTimeout(timer);
-  }, [navigate]);
+    async function startMatching() {
+      queueId = await joinWaitingQueue(language, role, mood);
+
+      while (!stopped) {
+        const match = await findMatch(language, role, mood);
+
+        if (match) {
+          if (queueId) {
+            await leaveQueue(queueId);
+          }
+
+          navigate("/chat", {
+            state: {
+              roomId: match.roomId,
+              partner: match.partner,
+              language,
+              role,
+              mood,
+            },
+          });
+
+          return;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      }
+    }
+
+    startMatching();
+
+    return () => {
+      stopped = true;
+
+      if (queueId) {
+        leaveQueue(queueId);
+      }
+    };
+  }, [language, role, mood, navigate]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex items-center justify-center">
-
       <div className="bg-white shadow-xl rounded-3xl p-10 w-[420px] text-center">
 
         <div className="text-6xl animate-pulse">
@@ -34,11 +78,10 @@ export default function Matching() {
         </div>
 
         <p className="mt-8 text-sm text-gray-400">
-          Average wait time: 5–20 seconds
+          Searching securely...
         </p>
 
       </div>
-
     </div>
   );
 }

@@ -1,86 +1,147 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+
+import {
+  listenForMessages,
+  sendMessage,
+} from "../services/chat";
+
+import { auth } from "../firebase";
 
 export default function Chat() {
-  const [messages, setMessages] = useState([
-    {
-      sender: "listener",
-      text: "Hello 👋 I'm here to listen.",
-    },
-  ]);
+  const navigate = useNavigate();
+  const location = useLocation();
 
+  const roomId = location.state?.roomId;
+  const partner = location.state?.partner || "Anonymous Listener";
+
+  const language = location.state?.language || "English";
+  const role = location.state?.role || "Friend";
+  const mood = location.state?.mood || "Lonely";
+
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
 
-  function sendMessage() {
-    if (input.trim() === "") return;
+  const bottomRef = useRef(null);
 
-    setMessages([
-      ...messages,
-      {
-        sender: "me",
-        text: input,
-      },
-    ]);
+  useEffect(() => {
+    if (!roomId) {
+      navigate("/");
+      return;
+    }
+
+    const unsubscribe = listenForMessages(roomId, (msgs) => {
+      setMessages(msgs);
+    });
+
+    return () => unsubscribe();
+  }, [roomId, navigate]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({
+      behavior: "smooth",
+    });
+  }, [messages]);
+
+  async function handleSend() {
+    if (!input.trim()) return;
+
+    await sendMessage(roomId, input);
 
     setInput("");
   }
 
-  return (
-    <div className="min-h-screen bg-slate-100">
+  function nextPerson() {
+    navigate("/matching", {
+      state: {
+        language,
+        role,
+        mood,
+      },
+    });
+  }
 
-      {/* Header */}
+  function endChat() {
+    navigate("/");
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-100 flex flex-col">
 
       <div className="bg-blue-600 text-white p-5 flex justify-between items-center">
 
         <div>
           <h1 className="font-bold text-xl">
-            🟢 Anonymous Listener
+            🟢 {partner}
           </h1>
 
           <p className="text-sm opacity-80">
-            Online
+            Anonymous Chat
           </p>
         </div>
 
-        <button className="bg-red-500 px-4 py-2 rounded-xl">
-          End Chat
-        </button>
+        <div className="flex gap-3">
+
+          <button
+            onClick={nextPerson}
+            className="bg-yellow-500 hover:bg-yellow-600 px-4 py-2 rounded-xl"
+          >
+            Next Person
+          </button>
+
+          <button
+            onClick={endChat}
+            className="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-xl"
+          >
+            End Chat
+          </button>
+
+        </div>
 
       </div>
 
-      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-6 max-w-4xl mx-auto w-full">
 
-      <div className="max-w-4xl mx-auto p-6 h-[70vh] overflow-y-auto">
+        {messages.map((msg) => {
 
-        {messages.map((msg, index) => (
+          const mine = msg.sender === auth.currentUser.uid;
 
-          <div
-            key={index}
-            className={`mb-4 flex ${
-              msg.sender === "me"
-                ? "justify-end"
-                : "justify-start"
-            }`}
-          >
+          return (
 
             <div
-              className={`rounded-2xl px-5 py-3 max-w-sm ${
-                msg.sender === "me"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white shadow"
+              key={msg.id}
+              className={`mb-4 flex ${
+                mine
+                  ? "justify-end"
+                  : "justify-start"
               }`}
             >
-              {msg.text}
+
+              <div
+                className={`rounded-2xl px-5 py-3 max-w-sm ${
+                  mine
+                    ? "bg-blue-600 text-white"
+                    : "bg-white shadow"
+                }`}
+              >
+
+                {mine
+                  ? msg.originalText
+                  : msg.translatedText}
+
+              </div>
+
             </div>
 
-          </div>
+          );
 
-        ))}
+        })}
+
+        <div ref={bottomRef} />
 
       </div>
 
-      {/* Input */}
-
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-4">
+      <div className="bg-white border-t p-4">
 
         <div className="max-w-4xl mx-auto flex gap-3">
 
@@ -89,11 +150,16 @@ export default function Chat() {
             placeholder="Type your message..."
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                handleSend();
+              }
+            }}
           />
 
           <button
-            onClick={sendMessage}
-            className="bg-blue-600 text-white px-8 rounded-xl"
+            onClick={handleSend}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-8 rounded-xl"
           >
             Send
           </button>
