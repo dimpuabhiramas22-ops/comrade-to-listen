@@ -2,32 +2,20 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 
-import App from "./App";
 import "./index.css";
+import App from "./App";
 
-import { auth } from "./firebase";
-import { signInAnonymously } from "firebase/auth";
+import { AppProvider } from "./context/AppContext";
+import { AuthProvider } from "./context/AuthProvider";
 
-async function init() {
-  try {
-    const userCredential = await signInAnonymously(auth);
-
-    console.log("✅ Anonymous login successful");
-    console.log(userCredential.user);
-  } catch (error) {
-    console.error("❌ Firebase Auth Error");
-    console.error("Code:", error.code);
-    console.error("Message:", error.message);
-    console.error(error);
-  }
-
-  ReactDOM.createRoot(document.getElementById("root")).render(
-    <React.StrictMode>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-    </React.StrictMode>
-  );
-}
-
-init();
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <React.StrictMode>
+    <BrowserRouter>
+      <AppProvider>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </AppProvider>
+    </BrowserRouter>
+  </React.StrictMode>
+);

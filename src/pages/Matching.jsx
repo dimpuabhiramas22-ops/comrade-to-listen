@@ -1,87 +1,174 @@
-import { useEffect } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+
+import { useAppContext } from "../context/AppContext";
+
 import {
-  joinWaitingQueue,
-  findMatch,
-  leaveQueue,
-} from "../services/matching";
+  addWaitingUser,
+  watchWaitingUser,
+} from "../services/firestoreService";
+
+import { startMatching } from "../services/matchingEngine";
+
+import SearchingCard from "../components/matching/SearchingCard";
 
 export default function Matching() {
   const navigate = useNavigate();
-  const location = useLocation();
 
-  const language = location.state?.language || "English";
-  const role = location.state?.role || "Friend";
-  const mood = location.state?.mood || "Lonely";
+  const {
+    userType,
+    supportProfile,
+    listenerProfile,
+    currentUser,
+    setMatch,
+    setChatRoom,
+    setLoading,
+    setError,
+  } = useAppContext();
+
+  const [status, setStatus] = useState("Preparing...");
+  const [progress, setProgress] = useState(10);
 
   useEffect(() => {
-    let queueId = null;
-    let stopped = false;
+    if (!currentUser?.uid) return;
 
-    async function startMatching() {
-      queueId = await joinWaitingQueue(language, role, mood);
+    let unsubscribe = null;
+    let cancelled = false;
 
-      while (!stopped) {
-        const match = await findMatch(language, role, mood);
+    async function beginMatching() {
+      try {
+        setLoading(true);
 
-        if (match) {
-          if (queueId) {
-            await leaveQueue(queueId);
-          }
+        const profile =
+          userType === "support"
+            ? supportProfile
+            : listenerProfile;
 
-          navigate("/chat", {
-            state: {
-              roomId: match.roomId,
-              partner: match.partner,
-              language,
-              role,
-              mood,
-            },
-          });
+        setStatus("Joining the waiting room...");
+        setProgress(20);
 
+        await addWaitingUser({
+          uid: currentUser.uid,
+          userType,
+          ...profile,
+        });
+
+        // ==========================
+        // LISTENER FLOW
+        // ==========================
+        if (userType === "listener") {
+          setStatus("Waiting for someone who needs support...");
+          setProgress(35);
+
+          unsubscribe = watchWaitingUser(
+            currentUser.uid,
+            (waitingUser) => {
+              if (!waitingUser) return;
+
+              if (!waitingUser.assignedRoom) return;
+
+              setChatRoom(waitingUser.assignedRoom);
+
+              setStatus("Match found!");
+              setProgress(100);
+
+              unsubscribe?.();
+
+              setTimeout(() => {
+                navigate("/chat");
+              }, 800);
+            }
+          );
+
+          setLoading(false);
           return;
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 3000));
+        // ==========================
+        // SUPPORT FLOW
+        // ==========================
+        setStatus("Finding the best listener...");
+        setProgress(60);
+
+        const result = await startMatching(
+          currentUser,
+          supportProfile
+        );
+
+        if (cancelled) return;
+
+        if (!result.success) {
+          switch (result.reason) {
+            case "NO_LISTENER":
+              setStatus(
+                "No listener available. Waiting..."
+              );
+              setProgress(60);
+              setLoading(false);
+              return;
+
+            case "LISTENER_ALREADY_RESERVED":
+              setStatus(
+                "Listener matched elsewhere. Retrying..."
+              );
+              setProgress(60);
+
+              setTimeout(() => {
+                if (!cancelled) {
+                  beginMatching();
+                }
+              }, 800);
+
+              return;
+
+            default:
+              throw new Error("Matching failed");
+          }
+        }
+
+        setMatch({
+          listener: result.listener,
+          score: result.score,
+        });
+
+        setChatRoom(result.roomId);
+
+        setStatus("Match found!");
+        setProgress(100);
+
+        setTimeout(() => {
+          navigate("/chat");
+        }, 800);
+      } catch (error) {
+        console.error(error);
+
+        setError(error.message);
+
+        setStatus("Something went wrong.");
+
+        setProgress(0);
+
+        setLoading(false);
       }
     }
 
-    startMatching();
+    beginMatching();
 
     return () => {
-      stopped = true;
+      cancelled = true;
 
-      if (queueId) {
-        leaveQueue(queueId);
+      if (unsubscribe) {
+        unsubscribe();
       }
     };
-  }, [language, role, mood, navigate]);
+  }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex items-center justify-center">
-      <div className="bg-white shadow-xl rounded-3xl p-10 w-[420px] text-center">
-
-        <div className="text-6xl animate-pulse">
-          💙
-        </div>
-
-        <h1 className="text-3xl font-bold mt-6">
-          Finding Your Listener...
-        </h1>
-
-        <p className="text-gray-500 mt-4">
-          We're matching you with someone who is ready to listen.
-        </p>
-
-        <div className="mt-8 flex justify-center">
-          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-        </div>
-
-        <p className="mt-8 text-sm text-gray-400">
-          Searching securely...
-        </p>
-
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center px-6">
+      <SearchingCard
+        progress={progress}
+        status={status}
+      />
     </div>
   );
 }

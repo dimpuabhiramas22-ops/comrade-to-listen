@@ -1,44 +1,31 @@
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { useAppContext } from "../context/AppContext";
 
 export default function MoodSelection() {
   const navigate = useNavigate();
-  const location = useLocation();
 
-  const {
-    language = "English",
-    role = "Friend",
-  } = location.state || {};
+  const { supportProfile, setSupportProfile } = useAppContext();
 
-  const moods = [
-    "Sad",
-    "Lonely",
-    "Anxious",
-    "Angry",
-    "Depressed",
-    "Confused",
-    "Happy",
-    "Tired",
+  const emotions = [
+    { icon: "😢", name: "Sad" },
+    { icon: "😔", name: "Lonely" },
+    { icon: "😰", name: "Anxious" },
+    { icon: "😡", name: "Angry" },
+    { icon: "😞", name: "Hopeless" },
+    { icon: "😴", name: "Exhausted" },
+    { icon: "😕", name: "Confused" },
+    { icon: "😨", name: "Overwhelmed" },
+    { icon: "😊", name: "Happy" },
+    { icon: "😌", name: "Calm" },
   ];
 
-  const moodIcons = {
-    Sad: "😢",
-    Lonely: "😔",
-    Anxious: "😰",
-    Angry: "😡",
-    Depressed: "😞",
-    Confused: "😐",
-    Happy: "😊",
-    Tired: "😴",
-  };
+  function handleEmotionSelect(emotion) {
+    setSupportProfile((prev) => ({
+      ...prev,
+      emotion,
+    }));
 
-  function handleMoodSelect(mood) {
-    navigate("/matching", {
-      state: {
-        language,
-        role,
-        mood,
-      },
-    });
+    navigate("/role");
   }
 
   return (
@@ -46,29 +33,40 @@ export default function MoodSelection() {
       <div className="bg-white rounded-3xl shadow-xl p-10 max-w-5xl w-full">
 
         <h1 className="text-4xl font-bold text-center">
-          How are you feeling today?
+          💙 How are you feeling right now?
         </h1>
 
         <p className="text-center text-gray-500 mt-4">
-          Select your current mood.
+          Select the emotion that best describes how you feel.
         </p>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5 mt-10">
+        {/* Progress */}
+        <div className="flex justify-center mt-8">
+          <div className="bg-blue-100 text-blue-700 px-4 py-2 rounded-full text-sm font-medium">
+            Step 3 of 5
+          </div>
+        </div>
 
-          {moods.map((mood) => (
+        <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-5 mt-10">
+          {emotions.map((emotion) => (
             <button
-              key={mood}
-              onClick={() => handleMoodSelect(mood)}
-              className="border rounded-2xl p-5 hover:bg-blue-600 hover:text-white transition text-lg"
+              key={emotion.name}
+              onClick={() => handleEmotionSelect(emotion.name)}
+              className={`border rounded-2xl p-5 transition-all duration-200 hover:bg-blue-600 hover:text-white hover:shadow-lg ${
+                supportProfile.emotion === emotion.name
+                  ? "bg-blue-600 text-white"
+                  : "bg-white"
+              }`}
             >
-              <div className="text-3xl mb-2">
-                {moodIcons[mood]}
+              <div className="text-5xl mb-3">
+                {emotion.icon}
               </div>
 
-              <div>{mood}</div>
+              <div className="font-semibold text-lg">
+                {emotion.name}
+              </div>
             </button>
           ))}
-
         </div>
 
       </div>

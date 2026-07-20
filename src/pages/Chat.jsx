@@ -1,172 +1,99 @@
-import { useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+
+import { useAppContext } from "../context/AppContext";
+
+import ChatHeader from "../components/chat/ChatHeader";
+import ChatMessages from "../components/chat/ChatMessages";
+import ChatInput from "../components/chat/ChatInput";
+import TypingIndicator from "../components/chat/TypingIndicator";
 
 import {
-  listenForMessages,
   sendMessage,
-} from "../services/chat";
+  subscribeToMessages,
+} from "../services/messageService";
 
-import { auth } from "../firebase";
+import { translateMessage } from "../services/translationService";
 
 export default function Chat() {
   const navigate = useNavigate();
-  const location = useLocation();
 
-  const roomId = location.state?.roomId;
-  const partner = location.state?.partner || "Anonymous Listener";
-
-  const language = location.state?.language || "English";
-  const role = location.state?.role || "Friend";
-  const mood = location.state?.mood || "Lonely";
+  const {
+    chatRoom,
+    currentUser,
+  } = useAppContext();
 
   const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState("");
-
-  const bottomRef = useRef(null);
+  const [sending, setSending] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [isTyping] = useState(false);
 
   useEffect(() => {
-    if (!roomId) {
+    if (!chatRoom) {
       navigate("/");
       return;
     }
 
-    const unsubscribe = listenForMessages(roomId, (msgs) => {
-      setMessages(msgs);
-    });
+    const unsubscribe = subscribeToMessages(
+      chatRoom,
+      (messageList) => {
+        setMessages(messageList);
+        setLoading(false);
+      }
+    );
 
-    return () => unsubscribe();
-  }, [roomId, navigate]);
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [chatRoom, navigate]);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({
-      behavior: "smooth",
-    });
-  }, [messages]);
+  async function handleSend(text) {
+    if (!text.trim()) return;
 
-  async function handleSend() {
-    if (!input.trim()) return;
+    try {
+      setSending(true);
 
-    await sendMessage(roomId, input);
+      const translated = await translateMessage(
+        text,
+        "en",
+        "hi"
+      );
 
-    setInput("");
-  }
-
-  function nextPerson() {
-    navigate("/matching", {
-      state: {
-        language,
-        role,
-        mood,
-      },
-    });
-  }
-
-  function endChat() {
-    navigate("/");
+      await sendMessage(chatRoom, {
+        senderId: currentUser.uid,
+        text,
+        translatedText: translated.translatedText,
+        createdAt: Date.now(),
+        read: false,
+      });
+    } catch (error) {
+      console.error("Failed to send message:", error);
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col">
+    <div className="h-screen flex flex-col bg-slate-100">
 
-      <div className="bg-blue-600 text-white p-5 flex justify-between items-center">
+      <ChatHeader />
 
-        <div>
-          <h1 className="font-bold text-xl">
-            🟢 {partner}
-          </h1>
+      <ChatMessages
+        messages={messages}
+        loading={loading}
+      />
 
-          <p className="text-sm opacity-80">
-            Anonymous Chat
-          </p>
-        </div>
+      <TypingIndicator
+        isTyping={isTyping}
+        name="Anonymous Companion"
+      />
 
-        <div className="flex gap-3">
-
-          <button
-            onClick={nextPerson}
-            className="bg-yellow-500 hover:bg-yellow-600 px-4 py-2 rounded-xl"
-          >
-            Next Person
-          </button>
-
-          <button
-            onClick={endChat}
-            className="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-xl"
-          >
-            End Chat
-          </button>
-
-        </div>
-
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-6 max-w-4xl mx-auto w-full">
-
-        {messages.map((msg) => {
-
-          const mine = msg.sender === auth.currentUser.uid;
-
-          return (
-
-            <div
-              key={msg.id}
-              className={`mb-4 flex ${
-                mine
-                  ? "justify-end"
-                  : "justify-start"
-              }`}
-            >
-
-              <div
-                className={`rounded-2xl px-5 py-3 max-w-sm ${
-                  mine
-                    ? "bg-blue-600 text-white"
-                    : "bg-white shadow"
-                }`}
-              >
-
-                {mine
-                  ? msg.originalText
-                  : msg.translatedText}
-
-              </div>
-
-            </div>
-
-          );
-
-        })}
-
-        <div ref={bottomRef} />
-
-      </div>
-
-      <div className="bg-white border-t p-4">
-
-        <div className="max-w-4xl mx-auto flex gap-3">
-
-          <input
-            className="flex-1 border rounded-xl p-3"
-            placeholder="Type your message..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                handleSend();
-              }
-            }}
-          />
-
-          <button
-            onClick={handleSend}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-8 rounded-xl"
-          >
-            Send
-          </button>
-
-        </div>
-
-      </div>
+      <ChatInput
+        onSend={handleSend}
+        sending={sending}
+      />
 
     </div>
   );
