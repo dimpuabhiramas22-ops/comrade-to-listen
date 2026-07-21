@@ -30,7 +30,9 @@ export default function Matching() {
   const [progress, setProgress] = useState(10);
 
   useEffect(() => {
-    if (!currentUser?.uid) return;
+    // Wait until Firebase authentication finishes
+    if (!currentUser) return;
+    if (!currentUser.uid) return;
 
     let cancelled = false;
 
@@ -115,6 +117,8 @@ export default function Matching() {
       } catch (error) {
         if (cancelled) return;
 
+        console.error("Matching Error:", error);
+
         setError(error.message || "Matching failed");
         setStatus("Something went wrong.");
         setProgress(0);
@@ -128,7 +132,17 @@ export default function Matching() {
       cancelled = true;
       unsubscribe();
     };
-  }, []);
+  }, [
+    currentUser?.uid,
+    userType,
+    supportProfile,
+    listenerProfile,
+    navigate,
+    setChatRoom,
+    setMatch,
+    setLoading,
+    setError,
+  ]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center px-6">
