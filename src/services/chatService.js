@@ -19,8 +19,16 @@ export async function createChatRoom(
 ) {
   const roomRef = doc(collection(db, "chatRooms"));
 
+  // Deterministic key for this pair.
+  // Used later to prevent duplicate chat rooms.
+  const matchKey = [supportUser.uid, listener.uid]
+    .sort()
+    .join("_");
+
   const roomData = {
     roomId: roomRef.id,
+
+    matchKey,
 
     users: [
       supportUser.uid,

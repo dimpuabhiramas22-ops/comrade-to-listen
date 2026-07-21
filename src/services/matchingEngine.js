@@ -1,22 +1,22 @@
-import { findBestListener } from "./matching";
+import { findRankedListeners } from "./matching";
 import { createChatRoom } from "./chatService";
 
 import {
   assignRoom,
-  removeWaitingUser,
   reserveWaitingUser,
   releaseWaitingUser,
 } from "./firestoreService";
 
 /**
- * Matching Engine V2
+ * Matching Engine V3
  *
- * Responsibilities:
- * - Find the best listener
- * - Reserve the listener safely
- * - Create a chat room
- * - Assign the room to both users
- * - Remove both users from the waiting queue
+ * Improvements
+ * - Tries ranked listeners sequentially
+ * - Removes race condition caused by restarting matching
+ * - Automatically retries reservation
+ * - Releases reservation if room creation fails
+ * - Keeps Firestore schema unchanged
+ * - No debug logging
  */
 
 export async function startMatching(
@@ -26,75 +26,81 @@ export async function startMatching(
   let reservedListener = null;
 
   try {
-    // Find the best available listener
-    const { listener, score } =
-      await findBestListener(supportProfile);
+    const rankedListeners = await findRankedListeners({
+      uid: supportUser.uid,
+      ...supportProfile,
+    });
 
-    if (!listener) {
+    if (!rankedListeners.length) {
       return {
         success: false,
         reason: "NO_LISTENER",
       };
     }
 
-    reservedListener = listener;
+    for (const candidate of rankedListeners) {
+      const { listener, score } = candidate;
 
-    // Try reserving the listener
-    try {
-      await reserveWaitingUser(listener.uid);
-    } catch (error) {
-      return {
-        success: false,
-        reason: "LISTENER_ALREADY_RESERVED",
-      };
+      reservedListener = null;
+
+      try {
+        // Transactional reservation.
+        // If another support user already reserved this listener,
+        // reserveWaitingUser() throws and we simply try the next one.
+        await reserveWaitingUser(listener.uid);
+
+        reservedListener = listener;
+
+        const { roomId } = await createChatRoom(
+          {
+            uid: supportUser.uid,
+            ...supportProfile,
+          },
+          listener,
+          score
+        );
+
+        await Promise.all([
+          assignRoom(supportUser.uid, roomId),
+          assignRoom(listener.uid, roomId),
+        ]);
+
+        return {
+          success: true,
+          roomId,
+          listener,
+          score,
+        };
+      } catch (error) {
+        // Reservation failed because another request won the race.
+        // Try the next ranked listener.
+        if (!reservedListener) {
+          continue;
+        }
+
+        // Reservation succeeded but something later failed.
+        // Release reservation before trying another listener.
+        try {
+          await releaseWaitingUser(reservedListener.uid);
+        } catch (_) {
+          // Ignore cleanup errors.
+        }
+
+        reservedListener = null;
+      }
     }
 
-    // Create a new chat room
-    const { roomId } =
-      await createChatRoom(
-        {
-          uid: supportUser.uid,
-          ...supportProfile,
-        },
-        listener,
-        score
-      );
-
-    // Assign room to both users
-    await Promise.all([
-      assignRoom(supportUser.uid, roomId),
-      assignRoom(listener.uid, roomId),
-    ]);
-
-    // Remove both users from waiting queue
-    await Promise.all([
-      removeWaitingUser(supportUser.uid),
-      removeWaitingUser(listener.uid),
-    ]);
-
+    // Every candidate became unavailable while matching.
     return {
-      success: true,
-      roomId,
-      listener,
-      score,
+      success: false,
+      reason: "NO_AVAILABLE_LISTENER",
     };
   } catch (error) {
-    console.error(
-      "Matching Engine Error:",
-      error
-    );
-
-    // Release reservation if something failed
     if (reservedListener) {
       try {
-        await releaseWaitingUser(
-          reservedListener.uid
-        );
-      } catch (releaseError) {
-        console.error(
-          "Failed to release listener:",
-          releaseError
-        );
+        await releaseWaitingUser(reservedListener.uid);
+      } catch (_) {
+        // Ignore cleanup errors.
       }
     }
 

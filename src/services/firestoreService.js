@@ -15,12 +15,6 @@ import {
 
 import { db } from "../firebase";
 
-/*
-|--------------------------------------------------------------------------
-| Add Waiting User
-|--------------------------------------------------------------------------
-*/
-
 export async function addWaitingUser(user) {
   const ref = doc(db, "waitingUsers", user.uid);
 
@@ -28,13 +22,9 @@ export async function addWaitingUser(user) {
     ref,
     {
       ...user,
-
       status: "waiting",
-
       assignedRoom: null,
-
       createdAt: serverTimestamp(),
-
       updatedAt: serverTimestamp(),
     },
     {
@@ -43,26 +33,12 @@ export async function addWaitingUser(user) {
   );
 }
 
-/*
-|--------------------------------------------------------------------------
-| Remove Waiting User
-|--------------------------------------------------------------------------
-*/
-
 export async function removeWaitingUser(uid) {
   await deleteDoc(doc(db, "waitingUsers", uid));
 }
 
-/*
-|--------------------------------------------------------------------------
-| Get Waiting User
-|--------------------------------------------------------------------------
-*/
-
 export async function getWaitingUser(uid) {
-  const snapshot = await getDoc(
-    doc(db, "waitingUsers", uid)
-  );
+  const snapshot = await getDoc(doc(db, "waitingUsers", uid));
 
   if (!snapshot.exists()) return null;
 
@@ -72,39 +48,48 @@ export async function getWaitingUser(uid) {
   };
 }
 
-/*
-|--------------------------------------------------------------------------
-| Assign Room
-|--------------------------------------------------------------------------
-*/
-
 export async function assignRoom(uid, roomId) {
-  await updateDoc(doc(db, "waitingUsers", uid), {
-    assignedRoom: roomId,
-    status: "matched",
-    updatedAt: serverTimestamp(),
+  const waitingRef = doc(db, "waitingUsers", uid);
+
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(waitingRef);
+
+    if (!snapshot.exists()) {
+      throw new Error("Waiting user not found");
+    }
+
+    transaction.update(waitingRef, {
+      assignedRoom: roomId,
+      status: "matched",
+      updatedAt: serverTimestamp(),
+    });
   });
 }
-
-/*
-|--------------------------------------------------------------------------
-| Clear Assigned Room
-|--------------------------------------------------------------------------
-*/
 
 export async function clearAssignedRoom(uid) {
-  await updateDoc(doc(db, "waitingUsers", uid), {
-    assignedRoom: null,
-    status: "waiting",
-    updatedAt: serverTimestamp(),
+  const waitingRef = doc(db, "waitingUsers", uid);
+
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(waitingRef);
+
+    if (!snapshot.exists()) {
+      return;
+    }
+
+    const data = snapshot.data();
+
+    // Don't overwrite an already matched user.
+    if (data.status === "matched") {
+      return;
+    }
+
+    transaction.update(waitingRef, {
+      assignedRoom: null,
+      status: "waiting",
+      updatedAt: serverTimestamp(),
+    });
   });
 }
-
-/*
-|--------------------------------------------------------------------------
-| Reserve Waiting User
-|--------------------------------------------------------------------------
-*/
 
 export async function reserveWaitingUser(uid) {
   const waitingRef = doc(db, "waitingUsers", uid);
@@ -131,24 +116,29 @@ export async function reserveWaitingUser(uid) {
   });
 }
 
-/*
-|--------------------------------------------------------------------------
-| Release Reservation
-|--------------------------------------------------------------------------
-*/
-
 export async function releaseWaitingUser(uid) {
-  await updateDoc(doc(db, "waitingUsers", uid), {
-    status: "waiting",
-    updatedAt: serverTimestamp(),
+  const waitingRef = doc(db, "waitingUsers", uid);
+
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(waitingRef);
+
+    if (!snapshot.exists()) {
+      return;
+    }
+
+    const data = snapshot.data();
+
+    // Only release if it is still reserved.
+    if (data.status !== "reserved") {
+      return;
+    }
+
+    transaction.update(waitingRef, {
+      status: "waiting",
+      updatedAt: serverTimestamp(),
+    });
   });
 }
-
-/*
-|--------------------------------------------------------------------------
-| Get Waiting Listeners
-|--------------------------------------------------------------------------
-*/
 
 export async function getWaitingListeners() {
   const q = query(
@@ -165,12 +155,6 @@ export async function getWaitingListeners() {
   }));
 }
 
-/*
-|--------------------------------------------------------------------------
-| Get Waiting Support Users
-|--------------------------------------------------------------------------
-*/
-
 export async function getWaitingSupportUsers() {
   const q = query(
     collection(db, "waitingUsers"),
@@ -186,34 +170,19 @@ export async function getWaitingSupportUsers() {
   }));
 }
 
-/*
-|--------------------------------------------------------------------------
-| Watch Waiting User
-|--------------------------------------------------------------------------
-*/
-
 export function watchWaitingUser(uid, callback) {
-  return onSnapshot(
-    doc(db, "waitingUsers", uid),
-    (snapshot) => {
-      if (!snapshot.exists()) {
-        callback(null);
-        return;
-      }
-
-      callback({
-        id: snapshot.id,
-        ...snapshot.data(),
-      });
+  return onSnapshot(doc(db, "waitingUsers", uid), (snapshot) => {
+    if (!snapshot.exists()) {
+      callback(null);
+      return;
     }
-  );
-}
 
-/*
-|--------------------------------------------------------------------------
-| Watch Waiting Listeners
-|--------------------------------------------------------------------------
-*/
+    callback({
+      id: snapshot.id,
+      ...snapshot.data(),
+    });
+  });
+}
 
 export function watchWaitingListeners(callback) {
   const q = query(
@@ -231,12 +200,6 @@ export function watchWaitingListeners(callback) {
     );
   });
 }
-
-/*
-|--------------------------------------------------------------------------
-| Watch Waiting Support Users
-|--------------------------------------------------------------------------
-*/
 
 export function watchWaitingSupport(callback) {
   const q = query(

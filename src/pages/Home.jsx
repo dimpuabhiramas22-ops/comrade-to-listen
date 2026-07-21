@@ -10,25 +10,28 @@ export default function Home() {
 
   const {
     setUserType,
-    resetSupportProfile,
-    resetListenerProfile,
+    resetApp,
   } = useAppContext();
 
   function handleSupport() {
-    resetSupportProfile();
-    resetListenerProfile();
+    // Reset the entire app state
+    resetApp();
 
+    // Set current flow
     setUserType("support");
 
+    // Navigate to support flow
     navigate("/language");
   }
 
   function handleListener() {
-    resetSupportProfile();
-    resetListenerProfile();
+    // Reset the entire app state
+    resetApp();
 
+    // Set current flow
     setUserType("listener");
 
+    // Navigate to listener flow
     navigate("/listener-role");
   }
 

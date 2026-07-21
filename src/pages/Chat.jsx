@@ -13,6 +13,11 @@ import {
   subscribeToMessages,
 } from "../services/messageService";
 
+import {
+  endChat,
+  subscribeToRoom,
+} from "../services/endChatService";
+
 import { translateMessage } from "../services/translationService";
 
 export default function Chat() {
@@ -21,36 +26,92 @@ export default function Chat() {
   const {
     chatRoom,
     currentUser,
+    resetApp,
   } = useAppContext();
 
   const [messages, setMessages] = useState([]);
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [ending, setEnding] = useState(false);
+  const [chatEnded, setChatEnded] = useState(false);
   const [isTyping] = useState(false);
+
+  /*
+  |--------------------------------------------------------------------------
+  | Redirect if no room
+  |--------------------------------------------------------------------------
+  */
 
   useEffect(() => {
     if (!chatRoom) {
-      navigate("/");
-      return;
+      navigate("/", { replace: true });
     }
+  }, [chatRoom, navigate]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | Listen for Messages
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
+    if (!chatRoom) return;
+
+    let cancelled = false;
 
     const unsubscribe = subscribeToMessages(
       chatRoom,
       (messageList) => {
+        if (cancelled) return;
+
         setMessages(messageList);
         setLoading(false);
       }
     );
 
     return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
+      cancelled = true;
+      unsubscribe?.();
     };
-  }, [chatRoom, navigate]);
+  }, [chatRoom]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | Listen for Room Status
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
+    if (!chatRoom) return;
+
+    const unsubscribe = subscribeToRoom(
+      chatRoom,
+      (room) => {
+        if (!room) return;
+
+        if (room.status === "ended") {
+          setChatEnded(true);
+
+          setTimeout(() => {
+            resetApp();
+            navigate("/", {
+              replace: true,
+            });
+          }, 3000);
+        }
+      }
+    );
+
+    return () => unsubscribe?.();
+  }, [chatRoom, navigate, resetApp]);
+    /*
+  |--------------------------------------------------------------------------
+  | Send Message
+  |--------------------------------------------------------------------------
+  */
 
   async function handleSend(text) {
-    if (!text.trim()) return;
+    if (!text.trim() || sending || chatEnded) return;
 
     try {
       setSending(true);
@@ -68,17 +129,52 @@ export default function Chat() {
         createdAt: Date.now(),
         read: false,
       });
-    } catch (error) {
-      console.error("Failed to send message:", error);
     } finally {
       setSending(false);
     }
   }
 
+  /*
+  |--------------------------------------------------------------------------
+  | End Chat
+  |--------------------------------------------------------------------------
+  */
+
+  async function handleEndChat() {
+    if (ending || chatEnded) return;
+
+    const confirmed = window.confirm(
+      "Are you sure you want to end this conversation?"
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setEnding(true);
+
+      await endChat(chatRoom);
+
+      setChatEnded(true);
+    } catch (error) {
+      console.error("Failed to end chat:", error);
+      alert("Unable to end the chat. Please try again.");
+    } finally {
+      setEnding(false);
+    }
+  }
+
   return (
     <div className="h-screen flex flex-col bg-slate-100">
+      <ChatHeader
+        onEndChat={handleEndChat}
+        ending={ending}
+      />
 
-      <ChatHeader />
+      {chatEnded && (
+        <div className="bg-red-500 text-white text-center py-2 font-medium">
+          Conversation ended. Returning to Home...
+        </div>
+      )}
 
       <ChatMessages
         messages={messages}
@@ -90,11 +186,12 @@ export default function Chat() {
         name="Anonymous Companion"
       />
 
-      <ChatInput
-        onSend={handleSend}
-        sending={sending}
-      />
-
+      {!chatEnded && (
+        <ChatInput
+          onSend={handleSend}
+          sending={sending}
+        />
+      )}
     </div>
   );
 }

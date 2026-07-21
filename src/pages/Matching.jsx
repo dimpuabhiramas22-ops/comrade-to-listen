@@ -32,8 +32,27 @@ export default function Matching() {
   useEffect(() => {
     if (!currentUser?.uid) return;
 
-    let unsubscribe = null;
     let cancelled = false;
+
+    const unsubscribe = watchWaitingUser(
+      currentUser.uid,
+      (waitingUser) => {
+        if (cancelled || !waitingUser) return;
+
+        if (!waitingUser.assignedRoom) return;
+
+        setChatRoom(waitingUser.assignedRoom);
+
+        setStatus("Match found!");
+        setProgress(100);
+
+        setTimeout(() => {
+          if (!cancelled) {
+            navigate("/chat");
+          }
+        }, 800);
+      }
+    );
 
     async function beginMatching() {
       try {
@@ -53,40 +72,13 @@ export default function Matching() {
           ...profile,
         });
 
-        // ==========================
-        // LISTENER FLOW
-        // ==========================
         if (userType === "listener") {
           setStatus("Waiting for someone who needs support...");
           setProgress(35);
-
-          unsubscribe = watchWaitingUser(
-            currentUser.uid,
-            (waitingUser) => {
-              if (!waitingUser) return;
-
-              if (!waitingUser.assignedRoom) return;
-
-              setChatRoom(waitingUser.assignedRoom);
-
-              setStatus("Match found!");
-              setProgress(100);
-
-              unsubscribe?.();
-
-              setTimeout(() => {
-                navigate("/chat");
-              }, 800);
-            }
-          );
-
           setLoading(false);
           return;
         }
 
-        // ==========================
-        // SUPPORT FLOW
-        // ==========================
         setStatus("Finding the best listener...");
         setProgress(60);
 
@@ -100,29 +92,14 @@ export default function Matching() {
         if (!result.success) {
           switch (result.reason) {
             case "NO_LISTENER":
-              setStatus(
-                "No listener available. Waiting..."
-              );
+            case "NO_AVAILABLE_LISTENER":
+              setStatus("No listener available. Waiting...");
               setProgress(60);
               setLoading(false);
               return;
 
-            case "LISTENER_ALREADY_RESERVED":
-              setStatus(
-                "Listener matched elsewhere. Retrying..."
-              );
-              setProgress(60);
-
-              setTimeout(() => {
-                if (!cancelled) {
-                  beginMatching();
-                }
-              }, 800);
-
-              return;
-
             default:
-              throw new Error("Matching failed");
+              throw new Error(result.reason || "Matching failed");
           }
         }
 
@@ -131,23 +108,16 @@ export default function Matching() {
           score: result.score,
         });
 
-        setChatRoom(result.roomId);
+        setStatus("Listener found. Connecting...");
+        setProgress(90);
 
-        setStatus("Match found!");
-        setProgress(100);
-
-        setTimeout(() => {
-          navigate("/chat");
-        }, 800);
+        setLoading(false);
       } catch (error) {
-        console.error(error);
+        if (cancelled) return;
 
-        setError(error.message);
-
+        setError(error.message || "Matching failed");
         setStatus("Something went wrong.");
-
         setProgress(0);
-
         setLoading(false);
       }
     }
@@ -156,10 +126,7 @@ export default function Matching() {
 
     return () => {
       cancelled = true;
-
-      if (unsubscribe) {
-        unsubscribe();
-      }
+      unsubscribe();
     };
   }, []);
 

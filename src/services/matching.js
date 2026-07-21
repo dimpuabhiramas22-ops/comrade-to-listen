@@ -9,58 +9,72 @@ import { db } from "../firebase";
 import { calculateMatchScore } from "../utils/scoring";
 
 /**
- * Find the best listener for a support user.
- *
- * @param {Object} supportUser
- * @returns {Promise<{listener:Object|null,score:number}>}
+ * Returns every available listener sorted by compatibility.
+ * This function DOES NOT reserve listeners.
+ * Reservation is handled separately using Firestore transactions.
  */
-export async function findBestListener(supportUser) {
-  try {
+export async function findRankedListeners(supportUser) {
+  const q = query(
+    collection(db, "waitingUsers"),
+    where("userType", "==", "listener"),
+    where("status", "==", "waiting")
+  );
 
-    // Get only waiting listeners
-    const listenerQuery = query(
-      collection(db, "waitingUsers"),
-      where("userType", "==", "listener"),
-      where("status", "==", "waiting")
-    );
+  const snapshot = await getDocs(q);
 
-    const snapshot = await getDocs(listenerQuery);
+  if (snapshot.empty) {
+    return [];
+  }
 
-    let bestListener = null;
-    let highestScore = -1;
+  const ranked = [];
 
-    snapshot.forEach((doc) => {
-
-      const listener = {
-        id: doc.id,
-        ...doc.data(),
-      };
-
-      const score = calculateMatchScore(
-        supportUser,
-        listener
-      );
-
-      if (score > highestScore) {
-        highestScore = score;
-        bestListener = listener;
-      }
-
-    });
-
-    return {
-      listener: bestListener,
-      score: highestScore,
+  snapshot.forEach((doc) => {
+    const listener = {
+      id: doc.id,
+      ...doc.data(),
     };
 
-  } catch (error) {
+    // Ignore invalid records
+    if (!listener.uid) return;
 
-    console.error("Matching Error:", error);
+    // Never match yourself
+    if (listener.uid === supportUser.uid) return;
 
+    ranked.push({
+      listener,
+      score: calculateMatchScore(supportUser, listener),
+    });
+  });
+
+  ranked.sort((a, b) => {
+    // Highest compatibility first
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
+
+    // Tie-breaker: oldest waiting listener first
+    const aTime = a.listener.createdAt?.seconds ?? 0;
+    const bTime = b.listener.createdAt?.seconds ?? 0;
+
+    return aTime - bTime;
+  });
+
+  return ranked;
+}
+
+/**
+ * Backward-compatible helper.
+ * Existing code using findBestListener() will continue working.
+ */
+export async function findBestListener(supportUser) {
+  const ranked = await findRankedListeners(supportUser);
+
+  if (!ranked.length) {
     return {
       listener: null,
       score: 0,
     };
-
   }
+
+  return ranked[0];
 }

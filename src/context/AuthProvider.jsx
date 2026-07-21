@@ -1,16 +1,38 @@
-import { createContext, useContext, useEffect } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+} from "react";
+
 import {
   onAuthStateChanged,
   signInAnonymously,
 } from "firebase/auth";
 
 import { auth } from "../firebase";
+
 import { useAppContext } from "./AppContext";
+
+import { restoreSession } from "../services/sessionService";
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const { setCurrentUser, setLoading } = useAppContext();
+  const {
+    setCurrentUser,
+
+    setChatRoom,
+
+    setLoading,
+
+    setError,
+
+    setUserType,
+
+    setSupportProfile,
+
+    setListenerProfile,
+  } = useAppContext();
 
   useEffect(() => {
     let unsubscribe;
@@ -19,16 +41,83 @@ export function AuthProvider({ children }) {
       setLoading(true);
 
       try {
+        // Anonymous login
         if (!auth.currentUser) {
           await signInAnonymously(auth);
         }
 
-        unsubscribe = onAuthStateChanged(auth, (user) => {
-          setCurrentUser(user);
-          setLoading(false);
-        });
+        unsubscribe = onAuthStateChanged(
+          auth,
+          async (user) => {
+            setCurrentUser(user);
+
+            if (!user) {
+              setLoading(false);
+              return;
+            }
+
+            try {
+              const waitingUser =
+                await restoreSession(user.uid);
+
+              if (waitingUser) {
+                // Restore user flow
+                setUserType(waitingUser.userType);
+
+                if (
+                  waitingUser.userType === "support"
+                ) {
+                  setSupportProfile({
+                    language:
+                      waitingUser.language || "",
+
+                    problem:
+                      waitingUser.problem || "",
+
+                    emotion:
+                      waitingUser.emotion || "",
+
+                    preferredRole:
+                      waitingUser.preferredRole || "",
+                  });
+                } else if (
+                  waitingUser.userType === "listener"
+                ) {
+                  setListenerProfile({
+                    language:
+                      waitingUser.language || "",
+
+                    listenerRoles:
+                      waitingUser.listenerRoles || [],
+
+                    topics:
+                      waitingUser.topics || [],
+                  });
+                }
+
+                // Restore active chat
+                if (waitingUser.assignedRoom) {
+                  setChatRoom(
+                    waitingUser.assignedRoom
+                  );
+                }
+              }
+            } catch (error) {
+              setError(
+                error.message ||
+                  "Failed to restore session"
+              );
+            }
+
+            setLoading(false);
+          }
+        );
       } catch (error) {
-        console.error("Authentication Error:", error);
+        setError(
+          error.message ||
+            "Authentication failed"
+        );
+
         setLoading(false);
       }
     }
@@ -36,9 +125,17 @@ export function AuthProvider({ children }) {
     initialize();
 
     return () => {
-      if (unsubscribe) unsubscribe();
+      unsubscribe?.();
     };
-  }, []);
+  }, [
+    setCurrentUser,
+    setChatRoom,
+    setLoading,
+    setError,
+    setUserType,
+    setSupportProfile,
+    setListenerProfile,
+  ]);
 
   return (
     <AuthContext.Provider value={{}}>

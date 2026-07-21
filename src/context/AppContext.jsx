@@ -1,103 +1,130 @@
-import { createContext, useContext, useState } from "react";
-
+import {
+  createContext,
+  useContext,
+  useMemo,
+  useState,
+} from "react";
 const AppContext = createContext(null);
 
+const DEFAULT_SUPPORT_PROFILE = {
+  language: "",
+  problem: "",
+  emotion: "",
+  preferredRole: "",
+};
+
+const DEFAULT_LISTENER_PROFILE = {
+  language: "",
+  listenerRoles: [],
+  topics: [],
+};
+
 export function AppProvider({ children }) {
-  // Current flow
-  const [userType, setUserType] = useState(null); // "support" | "listener"
+  // Flow
+  const [userType, setUserType] = useState(null);
 
-  // Support User Profile
-  const [supportProfile, setSupportProfile] = useState({
-    language: "",
-    problem: "",
-    emotion: "",
-    preferredRole: "",
-  });
+  // Profiles
+  const [supportProfile, setSupportProfile] = useState(
+    DEFAULT_SUPPORT_PROFILE
+  );
 
-  // Listener Profile
-  const [listenerProfile, setListenerProfile] = useState({
-    language: "",
-    listenerRoles: [],
-    topics: [],
-  });
+  const [listenerProfile, setListenerProfile] = useState(
+    DEFAULT_LISTENER_PROFILE
+  );
 
-  // Match Information
+  // Match
   const [match, setMatch] = useState(null);
 
-  // Active Chat Room
+  // Active chat
   const [chatRoom, setChatRoom] = useState(null);
 
-  // Firebase User
+  // Firebase user
   const [currentUser, setCurrentUser] = useState(null);
 
-  // UI State
+  // UI
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   function resetSupportProfile() {
     setSupportProfile({
-      language: "",
-      problem: "",
-      emotion: "",
-      preferredRole: "",
+      ...DEFAULT_SUPPORT_PROFILE,
     });
   }
 
   function resetListenerProfile() {
     setListenerProfile({
-      language: "",
-      listenerRoles: [],
-      topics: [],
+      ...DEFAULT_LISTENER_PROFILE,
     });
   }
 
+  /**
+   * Global reset.
+   * Keeps one function responsible for resetting
+   * the application state.
+   */
   function resetApp() {
     setUserType(null);
+
     resetSupportProfile();
     resetListenerProfile();
+
     setMatch(null);
     setChatRoom(null);
+
     setCurrentUser(null);
+
     setLoading(false);
     setError(null);
   }
 
-  const value = {
-    // Flow
-    userType,
-    setUserType,
+  const value = useMemo(
+    () => ({
+      // Flow
+      userType,
+      setUserType,
 
-    // Support
-    supportProfile,
-    setSupportProfile,
-    resetSupportProfile,
+      // Support
+      supportProfile,
+      setSupportProfile,
+      resetSupportProfile,
 
-    // Listener
-    listenerProfile,
-    setListenerProfile,
-    resetListenerProfile,
+      // Listener
+      listenerProfile,
+      setListenerProfile,
+      resetListenerProfile,
 
-    // Match
-    match,
-    setMatch,
+      // Match
+      match,
+      setMatch,
 
-    // Chat
-    chatRoom,
-    setChatRoom,
+      // Chat
+      chatRoom,
+      setChatRoom,
 
-    // Firebase User
-    currentUser,
-    setCurrentUser,
+      // Firebase
+      currentUser,
+      setCurrentUser,
 
-    // UI
-    loading,
-    setLoading,
-    error,
-    setError,
+      // UI
+      loading,
+      setLoading,
+      error,
+      setError,
 
-    // Helpers
-    resetApp,
-  };
+      // Helpers
+      resetApp,
+    }),
+    [
+      userType,
+      supportProfile,
+      listenerProfile,
+      match,
+      chatRoom,
+      currentUser,
+      loading,
+      error,
+    ]
+  );
 
   return (
     <AppContext.Provider value={value}>
@@ -110,7 +137,9 @@ export function useAppContext() {
   const context = useContext(AppContext);
 
   if (!context) {
-    throw new Error("useAppContext must be used inside AppProvider");
+    throw new Error(
+      "useAppContext must be used inside AppProvider"
+    );
   }
 
   return context;

@@ -1,4 +1,11 @@
-import { Routes, Route } from "react-router-dom";
+import { useEffect } from "react";
+import {
+  Routes,
+  Route,
+  useNavigate,
+} from "react-router-dom";
+
+import { useAppContext } from "./context/AppContext";
 
 import Home from "./pages/Home";
 import About from "./pages/About";
@@ -14,31 +21,86 @@ import Chat from "./pages/Chat";
 import NotFound from "./pages/NotFound";
 
 function App() {
+  const navigate = useNavigate();
+
+  const { chatRoom } = useAppContext();
+
+  // Automatically restore chat after refresh
+  useEffect(() => {
+    if (chatRoom) {
+      navigate("/chat", {
+        replace: true,
+      });
+    }
+  }, [chatRoom, navigate]);
+
   return (
     <Routes>
       {/* Home */}
-      <Route path="/" element={<Home />} />
+      <Route
+        path="/"
+        element={<Home />}
+      />
 
       {/* General */}
-      <Route path="/about" element={<About />} />
-      <Route path="/volunteer" element={<Volunteer />} />
+      <Route
+        path="/about"
+        element={<About />}
+      />
 
-      {/* Support User Flow */}
-      <Route path="/language" element={<Language />} />
-      <Route path="/problem" element={<ProblemSelection />} />
-      <Route path="/mood" element={<MoodSelection />} />
-      <Route path="/role" element={<RoleSelection />} />
+      <Route
+        path="/volunteer"
+        element={<Volunteer />}
+      />
+
+      {/* Support Flow */}
+      <Route
+        path="/language"
+        element={<Language />}
+      />
+
+      <Route
+        path="/problem"
+        element={<ProblemSelection />}
+      />
+
+      <Route
+        path="/mood"
+        element={<MoodSelection />}
+      />
+
+      <Route
+        path="/role"
+        element={<RoleSelection />}
+      />
 
       {/* Listener Flow */}
-      <Route path="/listener-role" element={<ListenerRole />} />
-      <Route path="/listener-topics" element={<ListenerTopics />} />
+      <Route
+        path="/listener-role"
+        element={<ListenerRole />}
+      />
+
+      <Route
+        path="/listener-topics"
+        element={<ListenerTopics />}
+      />
 
       {/* Shared */}
-      <Route path="/matching" element={<Matching />} />
-      <Route path="/chat" element={<Chat />} />
+      <Route
+        path="/matching"
+        element={<Matching />}
+      />
+
+      <Route
+        path="/chat"
+        element={<Chat />}
+      />
 
       {/* 404 */}
-      <Route path="*" element={<NotFound />} />
+      <Route
+        path="*"
+        element={<NotFound />}
+      />
     </Routes>
   );
 }
