@@ -30,18 +30,37 @@ export default function Matching() {
   const [progress, setProgress] = useState(10);
 
   useEffect(() => {
-    // Wait until Firebase authentication finishes
-    if (!currentUser) return;
-    if (!currentUser.uid) return;
+    console.log("========== Matching ==========");
+    console.log("currentUser:", currentUser);
+    console.log("uid:", currentUser?.uid);
+    console.log("userType:", userType);
+    console.log("supportProfile:", supportProfile);
+    console.log("listenerProfile:", listenerProfile);
+
+    if (!currentUser) {
+      console.log("❌ currentUser is null");
+      return;
+    }
+
+    if (!currentUser.uid) {
+      console.log("❌ currentUser.uid is missing");
+      return;
+    }
+
+    console.log("✅ User authenticated. Starting matching...");
 
     let cancelled = false;
 
     const unsubscribe = watchWaitingUser(
       currentUser.uid,
       (waitingUser) => {
+        console.log("watchWaitingUser:", waitingUser);
+
         if (cancelled || !waitingUser) return;
 
         if (!waitingUser.assignedRoom) return;
+
+        console.log("✅ Assigned room:", waitingUser.assignedRoom);
 
         setChatRoom(waitingUser.assignedRoom);
 
@@ -57,6 +76,8 @@ export default function Matching() {
     );
 
     async function beginMatching() {
+      console.log("🚀 beginMatching started");
+
       try {
         setLoading(true);
 
@@ -65,8 +86,12 @@ export default function Matching() {
             ? supportProfile
             : listenerProfile;
 
+        console.log("Profile:", profile);
+
         setStatus("Joining the waiting room...");
         setProgress(20);
+
+        console.log("Adding waiting user...");
 
         await addWaitingUser({
           uid: currentUser.uid,
@@ -74,12 +99,18 @@ export default function Matching() {
           ...profile,
         });
 
+        console.log("✅ Waiting user added");
+
         if (userType === "listener") {
+          console.log("Listener mode");
+
           setStatus("Waiting for someone who needs support...");
           setProgress(35);
           setLoading(false);
           return;
         }
+
+        console.log("Finding listener...");
 
         setStatus("Finding the best listener...");
         setProgress(60);
@@ -89,12 +120,16 @@ export default function Matching() {
           supportProfile
         );
 
+        console.log("Matching Result:", result);
+
         if (cancelled) return;
 
         if (!result.success) {
           switch (result.reason) {
             case "NO_LISTENER":
             case "NO_AVAILABLE_LISTENER":
+              console.log("No listener available");
+
               setStatus("No listener available. Waiting...");
               setProgress(60);
               setLoading(false);
@@ -104,6 +139,8 @@ export default function Matching() {
               throw new Error(result.reason || "Matching failed");
           }
         }
+
+        console.log("Listener Found:", result.listener);
 
         setMatch({
           listener: result.listener,
@@ -115,9 +152,9 @@ export default function Matching() {
 
         setLoading(false);
       } catch (error) {
-        if (cancelled) return;
+        console.error("❌ Matching Error:", error);
 
-        console.error("Matching Error:", error);
+        if (cancelled) return;
 
         setError(error.message || "Matching failed");
         setStatus("Something went wrong.");
@@ -125,6 +162,8 @@ export default function Matching() {
         setLoading(false);
       }
     }
+
+    console.log("Calling beginMatching()");
 
     beginMatching();
 
