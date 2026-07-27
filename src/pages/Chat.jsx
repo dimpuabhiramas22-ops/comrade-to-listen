@@ -19,8 +19,6 @@ import {
   subscribeToRoom,
 } from "../services/endChatService";
 
-import { translateMessage } from "../services/translationService";
-
 export default function Chat() {
   const navigate = useNavigate();
 
@@ -134,17 +132,9 @@ export default function Chat() {
     try {
       setSending(true);
 
-      const translated = await translateMessage(
-        text,
-        "en",
-        "hi"
-      );
-
       await sendMessage(chatRoom, {
         senderId: currentUser.uid,
         text,
-        translatedText: translated.translatedText,
-        createdAt: Date.now(),
         read: false,
       });
     } catch (error) {

@@ -11,6 +11,7 @@ import {
 } from "firebase/firestore";
 
 import { db } from "../firebase";
+import { translateMessage } from "./translationService";
 
 /*
 |--------------------------------------------------------------------------
@@ -26,11 +27,35 @@ export async function sendMessage(roomId, message) {
   // Prevent sending to a room that's already ended.
   const roomRef = doc(db, "chatRooms", roomId);
   const roomSnap = await getDoc(roomRef);
-  if (roomSnap.exists()) {
-    const roomData = roomSnap.data();
-    if (roomData.status === "ended") {
-      throw new Error("Cannot send message: conversation has ended.");
-    }
+  if (!roomSnap.exists()) {
+    throw new Error("Chat room not found.");
+  }
+
+  const roomData = roomSnap.data();
+  if (roomData.status === "ended") {
+    throw new Error("Cannot send message: conversation has ended.");
+  }
+
+  const senderId = message.senderId;
+  const receiverId = roomData.users?.find((userId) => userId !== senderId);
+
+  const senderLanguage =
+    roomData.userLanguages?.[senderId] || "";
+  const receiverLanguage =
+    roomData.userLanguages?.[receiverId] || "";
+
+  let translatedText = "";
+  if (
+    senderLanguage &&
+    receiverLanguage &&
+    senderLanguage !== receiverLanguage
+  ) {
+    const translationResult = await translateMessage(
+      message.text,
+      senderLanguage,
+      receiverLanguage
+    );
+    translatedText = translationResult.translatedText;
   }
 
   const messagesRef = collection(
@@ -43,7 +68,7 @@ export async function sendMessage(roomId, message) {
   const docRef = await addDoc(messagesRef, {
     senderId: message.senderId,
     text: message.text,
-    translatedText: message.translatedText || "",
+    translatedText,
     language: message.language || "",
     read: false,
     createdAt: serverTimestamp(),
