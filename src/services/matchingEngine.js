@@ -7,107 +7,146 @@ import {
   releaseWaitingUser,
 } from "./firestoreService";
 
-/**
- * Matching Engine V3
- *
- * Improvements
- * - Tries ranked listeners sequentially
- * - Removes race condition caused by restarting matching
- * - Automatically retries reservation
- * - Releases reservation if room creation fails
- * - Keeps Firestore schema unchanged
- * - No debug logging
- */
+const RETRY_DELAY = 1000;
+const MAX_WAIT = 60000;
+
+function sleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new Error("ABORTED"));
+
+    const t = setTimeout(() => {
+      if (signal) signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+
+    function onAbort() {
+      clearTimeout(t);
+      reject(new Error("ABORTED"));
+    }
+
+    if (signal) signal.addEventListener("abort", onAbort);
+  });
+}
 
 export async function startMatching(
   supportUser,
-  supportProfile
+  supportProfile,
+  signal
 ) {
-  let reservedListener = null;
+  const startTime = Date.now();
 
-  try {
-    const rankedListeners = await findRankedListeners({
-      uid: supportUser.uid,
-      ...supportProfile,
-    });
-
-    if (!rankedListeners.length) {
-      return {
-        success: false,
-        reason: "NO_LISTENER",
-      };
+  while (Date.now() - startTime < MAX_WAIT) {
+    if (signal?.aborted) {
+      return { success: false, reason: "ABORTED" };
     }
 
-    for (const candidate of rankedListeners) {
-      const { listener, score } = candidate;
+    let reservedListener = null;
 
-      reservedListener = null;
+    try {
+      const rankedListeners = await findRankedListeners({
+        uid: supportUser.uid,
+        ...supportProfile,
+      });
 
-      try {
-        // Transactional reservation.
-        // If another support user already reserved this listener,
-        // reserveWaitingUser() throws and we simply try the next one.
-        await reserveWaitingUser(listener.uid);
-
-        reservedListener = listener;
-
-        const { roomId } = await createChatRoom(
-          {
-            uid: supportUser.uid,
-            ...supportProfile,
-          },
-          listener,
-          score
-        );
-
-        await Promise.all([
-          assignRoom(supportUser.uid, roomId),
-          assignRoom(listener.uid, roomId),
-        ]);
-
-        return {
-          success: true,
-          roomId,
-          listener,
-          score,
-        };
-      } catch (error) {
-        // Reservation failed because another request won the race.
-        // Try the next ranked listener.
-        if (!reservedListener) {
-          continue;
-        }
-
-        // Reservation succeeded but something later failed.
-        // Release reservation before trying another listener.
+      if (!rankedListeners.length) {
+        console.log("No listener yet. Retrying...");
         try {
-          await releaseWaitingUser(reservedListener.uid);
-        } catch (_) {
-          // Ignore cleanup errors.
+          await sleep(RETRY_DELAY, signal);
+        } catch (err) {
+          if (err && err.message === "ABORTED") {
+            return { success: false, reason: "ABORTED" };
+          }
         }
+        continue;
+      }
+
+      for (const candidate of rankedListeners) {
+        if (signal?.aborted) {
+          return { success: false, reason: "ABORTED" };
+        }
+
+        const { listener, score } = candidate;
 
         reservedListener = null;
-      }
-    }
 
-    // Every candidate became unavailable while matching.
-    return {
-      success: false,
-      reason: "NO_AVAILABLE_LISTENER",
-    };
-  } catch (error) {
-    if (reservedListener) {
+        try {
+          await reserveWaitingUser(listener.uid);
+
+          reservedListener = listener;
+
+          const { roomId } = await createChatRoom(
+            {
+              uid: supportUser.uid,
+              ...supportProfile,
+            },
+            listener,
+            score
+          );
+
+          if (signal?.aborted) {
+            // release the reserved listener before exiting
+            try {
+              await releaseWaitingUser(reservedListener.uid);
+            } catch (_) {}
+
+            return { success: false, reason: "ABORTED" };
+          }
+
+          await Promise.all([
+            assignRoom(supportUser.uid, roomId),
+            assignRoom(listener.uid, roomId),
+          ]);
+
+          console.log("Match successful");
+
+          return {
+            success: true,
+            roomId,
+            listener,
+            score,
+          };
+        } catch (err) {
+          if (!reservedListener) {
+            continue;
+          }
+
+          try {
+            await releaseWaitingUser(reservedListener.uid);
+          } catch (_) {}
+
+          reservedListener = null;
+        }
+      }
+
+      console.log("Listeners busy. Retrying...");
       try {
-        await releaseWaitingUser(reservedListener.uid);
-      } catch (_) {
-        // Ignore cleanup errors.
+        await sleep(RETRY_DELAY, signal);
+      } catch (err) {
+        if (err && err.message === "ABORTED") {
+          return { success: false, reason: "ABORTED" };
+        }
+      }
+    } catch (error) {
+      if (reservedListener) {
+        try {
+          await releaseWaitingUser(reservedListener.uid);
+        } catch (_) {}
+      }
+
+      console.error(error);
+
+      try {
+        await sleep(RETRY_DELAY, signal);
+      } catch (err) {
+        if (err && err.message === "ABORTED") {
+          return { success: false, reason: "ABORTED" };
+        }
       }
     }
-
-    return {
-      success: false,
-      reason: "MATCH_FAILED",
-      error,
-    };
   }
+
+  return {
+    success: false,
+    reason: "TIMEOUT",
+  };
 }

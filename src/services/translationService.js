@@ -19,10 +19,11 @@ export async function translateMessage(
       headers: {
         "Content-Type": "application/json",
       },
+      // Backend expects `from` and `to` fields
       body: JSON.stringify({
         text,
-        sourceLanguage,
-        targetLanguage,
+        from: sourceLanguage,
+        to: targetLanguage,
       }),
     });
 

@@ -63,7 +63,6 @@ export default function Chat() {
       chatRoom,
       (messageList) => {
         if (cancelled) return;
-
         setMessages(messageList);
         setLoading(false);
       }
@@ -74,6 +73,8 @@ export default function Chat() {
       unsubscribe?.();
     };
   }, [chatRoom]);
+
+  
 
   /*
   |--------------------------------------------------------------------------

@@ -30,68 +30,43 @@ export default function Matching() {
   const [progress, setProgress] = useState(10);
 
   useEffect(() => {
-    console.log("========== Matching ==========");
-    console.log("currentUser:", currentUser);
-    console.log("uid:", currentUser?.uid);
-    console.log("userType:", userType);
-    console.log("supportProfile:", supportProfile);
-    console.log("listenerProfile:", listenerProfile);
-
     if (!currentUser) {
-      console.log("❌ currentUser is null");
       return;
     }
 
     if (!currentUser.uid) {
-      console.log("❌ currentUser.uid is missing");
       return;
     }
 
-    console.log("✅ User authenticated. Starting matching...");
-
     let cancelled = false;
+    const abortController = new AbortController();
+    let navTimeoutId = null;
 
-    const unsubscribe = watchWaitingUser(
-      currentUser.uid,
-      (waitingUser) => {
-        console.log("watchWaitingUser:", waitingUser);
+    const unsubscribe = watchWaitingUser(currentUser.uid, (waitingUser) => {
+      if (cancelled || !waitingUser) return;
 
-        if (cancelled || !waitingUser) return;
+      if (!waitingUser.assignedRoom) return;
 
-        if (!waitingUser.assignedRoom) return;
+      setChatRoom(waitingUser.assignedRoom);
 
-        console.log("✅ Assigned room:", waitingUser.assignedRoom);
+      setStatus("Match found!");
+      setProgress(100);
 
-        setChatRoom(waitingUser.assignedRoom);
-
-        setStatus("Match found!");
-        setProgress(100);
-
-        setTimeout(() => {
-          if (!cancelled) {
-            navigate("/chat");
-          }
-        }, 800);
-      }
-    );
+      navTimeoutId = setTimeout(() => {
+        if (!cancelled) {
+          navigate("/chat");
+        }
+      }, 800);
+    });
 
     async function beginMatching() {
-      console.log("🚀 beginMatching started");
-
       try {
         setLoading(true);
 
-        const profile =
-          userType === "support"
-            ? supportProfile
-            : listenerProfile;
-
-        console.log("Profile:", profile);
+        const profile = userType === "support" ? supportProfile : listenerProfile;
 
         setStatus("Joining the waiting room...");
         setProgress(20);
-
-        console.log("Adding waiting user...");
 
         await addWaitingUser({
           uid: currentUser.uid,
@@ -99,53 +74,35 @@ export default function Matching() {
           ...profile,
         });
 
-        console.log("✅ Waiting user added");
-
         if (userType === "listener") {
-          console.log("Listener mode");
-
           setStatus("Waiting for someone who needs support...");
           setProgress(35);
           setLoading(false);
           return;
         }
 
-        console.log("Finding listener...");
-
         setStatus("Finding the best listener...");
         setProgress(60);
 
-        const result = await startMatching(
-          currentUser,
-          supportProfile
-        );
-
-        console.log("Matching Result:", result);
+        const result = await startMatching(currentUser, supportProfile, abortController.signal);
 
         if (cancelled) return;
 
         if (!result.success) {
           switch (result.reason) {
-            case "NO_LISTENER":
-            case "NO_AVAILABLE_LISTENER":
-              console.log("No listener available");
-
-              setStatus("No listener available. Waiting...");
+            case "TIMEOUT":
+              setStatus("No listener found after 60 seconds.");
               setProgress(60);
               setLoading(false);
               return;
 
             default:
+              console.error("Unexpected matching failure:", result);
               throw new Error(result.reason || "Matching failed");
           }
         }
 
-        console.log("Listener Found:", result.listener);
-
-        setMatch({
-          listener: result.listener,
-          score: result.score,
-        });
+        setMatch({ listener: result.listener, score: result.score });
 
         setStatus("Listener found. Connecting...");
         setProgress(90);
@@ -163,13 +120,15 @@ export default function Matching() {
       }
     }
 
-    console.log("Calling beginMatching()");
-
     beginMatching();
 
     return () => {
       cancelled = true;
+      try {
+        abortController.abort();
+      } catch (_) {}
       unsubscribe();
+      if (navTimeoutId) clearTimeout(navTimeoutId);
     };
   }, [
     currentUser?.uid,

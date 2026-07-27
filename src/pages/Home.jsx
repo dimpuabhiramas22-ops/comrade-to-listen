@@ -10,13 +10,9 @@ export default function Home() {
 
   const {
     setUserType,
-    resetApp,
   } = useAppContext();
 
   function handleSupport() {
-    // Reset the entire app state
-    resetApp();
-
     // Set current flow
     setUserType("support");
 
@@ -25,9 +21,6 @@ export default function Home() {
   }
 
   function handleListener() {
-    // Reset the entire app state
-    resetApp();
-
     // Set current flow
     setUserType("listener");
 

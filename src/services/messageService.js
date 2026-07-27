@@ -29,7 +29,7 @@ export async function sendMessage(roomId, message) {
     "messages"
   );
 
-  await addDoc(messagesRef, {
+  const docRef = await addDoc(messagesRef, {
     senderId: message.senderId,
     text: message.text,
     translatedText: message.translatedText || "",
@@ -69,14 +69,30 @@ export function subscribeToMessages(roomId, callback) {
   );
 
   return onSnapshot(q, (snapshot) => {
-    const messages = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
+    // realtime snapshot received; map documents to messages
 
-      createdAt: doc.data().createdAt?.toDate?.()
-        ? doc.data().createdAt.toDate().getTime()
-        : Date.now(),
-    }));
+    const messages = snapshot.docs.map((d) => {
+      const data = d.data();
+
+      let createdAt = null;
+
+      // Firestore Timestamp -> ms
+      if (data.createdAt && typeof data.createdAt.toDate === "function") {
+        createdAt = data.createdAt.toDate().getTime();
+      } else if (typeof data.createdAt === "number") {
+        // already a millis value
+        createdAt = data.createdAt;
+      } else {
+        // fallback when missing
+        createdAt = Date.now();
+      }
+
+      return {
+        id: d.id,
+        ...data,
+        createdAt,
+      };
+    });
 
     callback(messages);
   });

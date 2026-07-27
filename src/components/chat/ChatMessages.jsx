@@ -8,6 +8,8 @@ export default function ChatMessages({
 }) {
   const bottomRef = useRef(null);
 
+  
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({
       behavior: "smooth",

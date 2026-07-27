@@ -3,6 +3,8 @@ import { useAppContext } from "../../context/AppContext";
 export default function MessageBubble({ message }) {
   const { currentUser } = useAppContext();
 
+  // render MessageBubble
+
   const isMine = message.senderId === currentUser?.uid;
 
   const time = message.createdAt
