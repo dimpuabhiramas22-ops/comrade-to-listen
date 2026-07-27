@@ -10,7 +10,7 @@ import {
 } from "firebase/firestore";
 
 import { auth, db } from "../firebase";
-import { translateText } from "./translate";
+import { translateMessage } from "./translationService";
 
 export function listenForMessages(roomId, callback) {
   const q = query(
@@ -46,7 +46,7 @@ export async function sendMessage(roomId, text) {
 
   const receiverLanguage = room.userLanguages[receiver];
 
-  const translated = await translateText(
+  const translationResult = await translateMessage(
     text,
     senderLanguage,
     receiverLanguage
@@ -57,7 +57,7 @@ export async function sendMessage(roomId, text) {
 
     originalText: text,
 
-    translatedText: translated,
+    translatedText: translationResult.translatedText,
 
     senderLanguage,
 

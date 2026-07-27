@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   addDoc,
+  getDoc,
   onSnapshot,
   query,
   orderBy,
@@ -22,6 +23,16 @@ export async function sendMessage(roomId, message) {
     throw new Error("Chat room ID is required.");
   }
 
+  // Prevent sending to a room that's already ended.
+  const roomRef = doc(db, "chatRooms", roomId);
+  const roomSnap = await getDoc(roomRef);
+  if (roomSnap.exists()) {
+    const roomData = roomSnap.data();
+    if (roomData.status === "ended") {
+      throw new Error("Cannot send message: conversation has ended.");
+    }
+  }
+
   const messagesRef = collection(
     db,
     "chatRooms",
@@ -39,8 +50,6 @@ export async function sendMessage(roomId, message) {
   });
 
   // Update chat room metadata
-  const roomRef = doc(db, "chatRooms", roomId);
-
   await updateDoc(roomRef, {
     lastMessage: message.text,
     lastMessageAt: serverTimestamp(),

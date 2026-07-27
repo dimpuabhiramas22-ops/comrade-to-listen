@@ -1,9 +1,12 @@
 import {
+  collection,
   doc,
   getDoc,
+  addDoc,
   updateDoc,
   serverTimestamp,
   onSnapshot,
+  runTransaction,
 } from "firebase/firestore";
 
 import { auth, db } from "../firebase";
@@ -22,28 +25,35 @@ export async function endChat(roomId) {
 
   const roomRef = doc(db, "chatRooms", roomId);
 
-  const roomSnap = await getDoc(roomRef);
+  const currentUser = auth.currentUser;
 
-  if (!roomSnap.exists()) {
-    throw new Error("Chat room not found.");
-  }
+  const room = await runTransaction(db, async (transaction) => {
+    const roomSnap = await transaction.get(roomRef);
 
-  const room = roomSnap.data();
+    if (!roomSnap.exists()) {
+      throw new Error("Chat room not found.");
+    }
 
-  // Already ended
+    const roomData = roomSnap.data();
+
+    if (roomData.status === "ended") {
+      return roomData;
+    }
+
+    transaction.update(roomRef, {
+      status: "ended",
+      endedBy: currentUser?.uid || null,
+      endedAt: serverTimestamp(),
+      lastMessage: "Conversation ended.",
+      lastMessageAt: serverTimestamp(),
+    });
+
+    return roomData;
+  });
+
   if (room.status === "ended") {
     return;
   }
-
-  const currentUser = auth.currentUser;
-
-  await updateDoc(roomRef, {
-    status: "ended",
-    endedBy: currentUser?.uid || null,
-    endedAt: serverTimestamp(),
-    lastMessage: "Conversation ended.",
-    lastMessageAt: serverTimestamp(),
-  });
 
   // Cleanup waiting queue
   if (Array.isArray(room.users)) {
@@ -60,6 +70,28 @@ export async function endChat(roomId) {
         }
       })
     );
+  }
+
+  // Add a system message to the messages subcollection so the other participant sees the end notice.
+  try {
+    const messagesRef = collection(
+      db,
+      "chatRooms",
+      roomId,
+      "messages"
+    );
+
+    await addDoc(messagesRef, {
+      senderId: null,
+      text: "Conversation ended.",
+      translatedText: "",
+      language: "",
+      read: true,
+      createdAt: serverTimestamp(),
+    });
+  } catch (err) {
+    // Non-fatal: room has been updated but system message failed
+    console.warn("Failed to add end-message to room", roomId, err);
   }
 }
 

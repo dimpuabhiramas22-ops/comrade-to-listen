@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useAppContext } from "../context/AppContext";
@@ -11,6 +11,7 @@ import TypingIndicator from "../components/chat/TypingIndicator";
 import {
   sendMessage,
   subscribeToMessages,
+  updateTypingStatus,
 } from "../services/messageService";
 
 import {
@@ -26,6 +27,7 @@ export default function Chat() {
   const {
     chatRoom,
     currentUser,
+    match,
     resetApp,
   } = useAppContext();
 
@@ -34,7 +36,11 @@ export default function Chat() {
   const [loading, setLoading] = useState(true);
   const [ending, setEnding] = useState(false);
   const [chatEnded, setChatEnded] = useState(false);
-  const [isTyping] = useState(false);
+  const [otherTyping, setOtherTyping] = useState(false);
+
+  const typingStartTimerRef = useRef(null);
+  const typingStopTimerRef = useRef(null);
+  const typingActiveRef = useRef(false);
 
   /*
   |--------------------------------------------------------------------------
@@ -94,17 +100,28 @@ export default function Chat() {
           setChatEnded(true);
 
           setTimeout(() => {
+            stopTyping();
             resetApp();
             navigate("/", {
               replace: true,
             });
           }, 3000);
+
+          return;
         }
+
+        const otherUserId = room.users?.find(
+          (uid) => uid !== currentUser?.uid
+        );
+
+        setOtherTyping(
+          Boolean(room.typing?.[otherUserId])
+        );
       }
     );
 
     return () => unsubscribe?.();
-  }, [chatRoom, navigate, resetApp]);
+  }, [chatRoom, currentUser, navigate, resetApp]);
     /*
   |--------------------------------------------------------------------------
   | Send Message
@@ -112,7 +129,7 @@ export default function Chat() {
   */
 
   async function handleSend(text) {
-    if (!text.trim() || sending || chatEnded) return;
+    if (!text.trim() || sending || ending || chatEnded) return;
 
     try {
       setSending(true);
@@ -130,10 +147,95 @@ export default function Chat() {
         createdAt: Date.now(),
         read: false,
       });
+    } catch (error) {
+      const errorMessage =
+        error?.message?.toLowerCase() || "";
+
+      if (errorMessage.includes("conversation has ended") || errorMessage.includes("ended")) {
+        setChatEnded(true);
+        return;
+      }
+
+      console.error("Failed to send message:", error);
+      alert("Unable to send your message. Please try again.");
     } finally {
       setSending(false);
     }
   }
+
+  const stopTyping = useCallback(async () => {
+    if (!chatRoom || !currentUser) return;
+
+    if (typingStartTimerRef.current) {
+      clearTimeout(typingStartTimerRef.current);
+      typingStartTimerRef.current = null;
+    }
+
+    if (typingStopTimerRef.current) {
+      clearTimeout(typingStopTimerRef.current);
+      typingStopTimerRef.current = null;
+    }
+
+    if (!typingActiveRef.current) return;
+
+    typingActiveRef.current = false;
+
+    try {
+      await updateTypingStatus(chatRoom, currentUser.uid, false);
+    } catch (error) {
+      console.warn("Failed to clear typing status", error);
+    }
+  }, [chatRoom, currentUser]);
+
+  const sendTypingStart = useCallback(async () => {
+    if (!chatRoom || !currentUser) return;
+    if (typingActiveRef.current) return;
+
+    typingActiveRef.current = true;
+
+    try {
+      await updateTypingStatus(chatRoom, currentUser.uid, true);
+    } catch (error) {
+      console.warn("Failed to set typing status", error);
+    }
+  }, [chatRoom, currentUser]);
+
+  const handleTyping = useCallback(() => {
+    if (!chatRoom || !currentUser || chatEnded || ending) return;
+
+    if (typingStopTimerRef.current) {
+      clearTimeout(typingStopTimerRef.current);
+      typingStopTimerRef.current = null;
+    }
+
+    if (typingActiveRef.current) {
+      typingStopTimerRef.current = window.setTimeout(
+        stopTyping,
+        2000
+      );
+      return;
+    }
+
+    if (!typingStartTimerRef.current) {
+      typingStartTimerRef.current = window.setTimeout(
+        async () => {
+          typingStartTimerRef.current = null;
+          await sendTypingStart();
+          typingStopTimerRef.current = window.setTimeout(
+            stopTyping,
+            2000
+          );
+        },
+        300
+      );
+    }
+  }, [chatRoom, currentUser, chatEnded, ending, sendTypingStart, stopTyping]);
+
+  useEffect(() => {
+    return () => {
+      stopTyping();
+    };
+  }, [stopTyping]);
 
   /*
   |--------------------------------------------------------------------------
@@ -144,14 +246,9 @@ export default function Chat() {
   async function handleEndChat() {
     if (ending || chatEnded) return;
 
-    const confirmed = window.confirm(
-      "Are you sure you want to end this conversation?"
-    );
-
-    if (!confirmed) return;
-
     try {
       setEnding(true);
+      await stopTyping();
 
       await endChat(chatRoom);
 
@@ -183,14 +280,22 @@ export default function Chat() {
       />
 
       <TypingIndicator
-        isTyping={isTyping}
-        name="Anonymous Companion"
+        isTyping={otherTyping}
+        name={
+          match?.listener?.preferredRole ||
+          match?.listener?.role ||
+          match?.support?.preferredRole ||
+          match?.support?.role ||
+          "Anonymous Companion"
+        }
       />
 
-      {!chatEnded && (
+      {!chatEnded && !ending && (
         <ChatInput
           onSend={handleSend}
           sending={sending}
+          onTyping={handleTyping}
+          onTypingStop={stopTyping}
         />
       )}
     </div>

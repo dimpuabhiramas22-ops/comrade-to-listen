@@ -3,6 +3,8 @@ import { useState } from "react";
 export default function ChatInput({
   onSend,
   sending = false,
+  onTyping,
+  onTypingStop,
 }) {
   const [message, setMessage] = useState("");
 
@@ -12,7 +14,7 @@ export default function ChatInput({
     if (!text || sending) return;
 
     onSend(text);
-
+    onTypingStop?.();
     setMessage("");
   }
 
@@ -41,7 +43,17 @@ export default function ChatInput({
         <textarea
           rows={1}
           value={message}
-          onChange={(e) => setMessage(e.target.value)}
+          onChange={(e) => {
+            const next = e.target.value;
+            setMessage(next);
+
+            if (next.trim()) {
+              onTyping?.();
+            } else {
+              onTypingStop?.();
+            }
+          }}
+          onBlur={() => onTypingStop?.()}
           onKeyDown={handleKeyDown}
           placeholder="Type your message..."
           className="flex-1 resize-none rounded-2xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 max-h-40"
