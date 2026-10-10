@@ -27,33 +27,31 @@ const features = [
 
 export default function Features() {
   return (
-    <section className="py-20 bg-white">
+    <section className="border-y border-indigo-100/70 bg-white/75 py-20 backdrop-blur-sm">
 
       <div className="max-w-7xl mx-auto px-6">
 
-        <h2 className="text-4xl font-bold text-center">
-          Why Choose Comrade to Listen?
-        </h2>
+        <h2 className="font-serif text-4xl font-semibold text-center text-ink">A softer way to reach out</h2>
 
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 mt-14">
 
           {features.map((feature) => (
-            <div
+            <article
               key={feature.title}
-              className="bg-gray-50 rounded-2xl p-8 shadow hover:shadow-xl transition"
+              className="rounded-3xl border border-slate-100 bg-white p-8 shadow-[0_10px_30px_rgba(30,47,110,.06)] transition hover:-translate-y-1 hover:shadow-[0_18px_38px_rgba(30,47,110,.10)]"
             >
               <div className="text-5xl">
                 {feature.icon}
               </div>
 
-              <h3 className="mt-5 text-xl font-bold">
+              <h3 className="mt-5 text-xl font-semibold text-ink">
                 {feature.title}
               </h3>
 
-              <p className="mt-3 text-gray-600">
+              <p className="mt-3 leading-7 text-slate-600">
                 {feature.description}
               </p>
-            </div>
+            </article>
           ))}
 
         </div>

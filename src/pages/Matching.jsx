@@ -20,6 +20,7 @@ export default function Matching() {
     supportProfile,
     listenerProfile,
     currentUser,
+    chatRoom,
     setMatch,
     setChatRoom,
     setLoading,
@@ -35,6 +36,17 @@ export default function Matching() {
     }
 
     if (!currentUser.uid) {
+      return;
+    }
+
+    if (chatRoom) {
+      navigate("/chat", { replace: true });
+      return;
+    }
+
+    if (userType !== "listener" && userType !== "support") {
+      console.warn("Matching aborted: invalid userType", userType);
+      setLoading(false);
       return;
     }
 
@@ -64,6 +76,12 @@ export default function Matching() {
         setLoading(true);
 
         const profile = userType === "support" ? supportProfile : listenerProfile;
+
+        if (userType !== "listener" && userType !== "support") {
+          console.warn("Matching aborted: invalid userType", userType);
+          setLoading(false);
+          return;
+        }
 
         setStatus("Joining the waiting room...");
         setProgress(20);
@@ -124,9 +142,7 @@ export default function Matching() {
 
     return () => {
       cancelled = true;
-      try {
-        abortController.abort();
-      } catch (_) {}
+      abortController.abort();
       unsubscribe();
       if (navTimeoutId) clearTimeout(navTimeoutId);
     };
@@ -135,6 +151,7 @@ export default function Matching() {
     userType,
     supportProfile,
     listenerProfile,
+    chatRoom,
     navigate,
     setChatRoom,
     setMatch,
@@ -143,7 +160,7 @@ export default function Matching() {
   ]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center px-6">
+    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,rgba(255,255,255,.96),transparent_34rem)] px-5">
       <SearchingCard
         progress={progress}
         status={status}

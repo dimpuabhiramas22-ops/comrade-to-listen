@@ -1,9 +1,9 @@
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   addDoc,
-  updateDoc,
   serverTimestamp,
   onSnapshot,
   runTransaction,
@@ -13,6 +13,7 @@ import { auth, db } from "../firebase";
 
 import {
   removeWaitingUser,
+  updateWaitingUser,
 } from "./firestoreService";
 
 /**
@@ -52,7 +53,7 @@ export async function endChat(roomId) {
   });
 
   if (room.status === "ended") {
-    return;
+    // Still clean up state for an already-ended room.
   }
 
   // Cleanup waiting queue
@@ -60,16 +61,28 @@ export async function endChat(roomId) {
     await Promise.all(
       room.users.map(async (uid) => {
         try {
+          await updateWaitingUser(uid, {
+            assignedRoom: null,
+            status: "waiting",
+            cancelled: false,
+            reservedBy: null,
+            reservedAt: null,
+          });
           await removeWaitingUser(uid);
         } catch (err) {
-          // Ignore cleanup failures
           console.warn(
-            `Failed to remove waiting user ${uid}`,
+            `Failed to clean up waiting user ${uid}`,
             err
           );
         }
       })
     );
+  }
+
+  try {
+    await deleteDoc(roomRef);
+  } catch (err) {
+    console.warn("Failed to delete ended room", roomId, err);
   }
 
   // Add a system message to the messages subcollection so the other participant sees the end notice.
@@ -90,7 +103,6 @@ export async function endChat(roomId) {
       createdAt: serverTimestamp(),
     });
   } catch (err) {
-    // Non-fatal: room has been updated but system message failed
     console.warn("Failed to add end-message to room", roomId, err);
   }
 }

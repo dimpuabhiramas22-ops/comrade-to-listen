@@ -153,7 +153,7 @@ export default function Chat() {
     }
   }
 
-  const stopTyping = useCallback(async () => {
+  async function stopTyping() {
     if (!chatRoom || !currentUser) return;
 
     if (typingStartTimerRef.current) {
@@ -175,7 +175,7 @@ export default function Chat() {
     } catch (error) {
       console.warn("Failed to clear typing status", error);
     }
-  }, [chatRoom, currentUser]);
+  }
 
   const sendTypingStart = useCallback(async () => {
     if (!chatRoom || !currentUser) return;

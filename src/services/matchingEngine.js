@@ -1,14 +1,13 @@
 import { findRankedListeners } from "./matching";
-import { createChatRoom } from "./chatService";
 
 import {
-  assignRoom,
-  reserveWaitingUser,
-  releaseWaitingUser,
+  claimListenerAndCreateRoom,
+  getWaitingUser,
 } from "./firestoreService";
 
 const RETRY_DELAY = 1000;
 const MAX_WAIT = 60000;
+const inFlightMatchingByUser = new Set();
 
 function sleep(ms, signal) {
   return new Promise((resolve, reject) => {
@@ -33,116 +32,98 @@ export async function startMatching(
   supportProfile,
   signal
 ) {
-  const startTime = Date.now();
+  const supportUid = supportUser?.uid;
 
-  while (Date.now() - startTime < MAX_WAIT) {
-    if (signal?.aborted) {
-      return { success: false, reason: "ABORTED" };
+  if (!supportUid) {
+    return { success: false, reason: "INVALID_SUPPORT_USER" };
+  }
+
+  if (inFlightMatchingByUser.has(supportUid)) {
+    console.log(`[matchingEngine] Matching already in progress for ${supportUid}`);
+    return { success: false, reason: "IN_PROGRESS" };
+  }
+
+  inFlightMatchingByUser.add(supportUid);
+  console.log(`[matchingEngine] Matching started for ${supportUid}`);
+
+  try {
+    const existingSupportState = await getWaitingUser(supportUid);
+
+    if (existingSupportState?.assignedRoom != null) {
+      return { success: false, reason: "ALREADY_ASSIGNED" };
     }
 
-    let reservedListener = null;
-
-    try {
-      const rankedListeners = await findRankedListeners({
-        uid: supportUser.uid,
-        ...supportProfile,
-      });
-
-      if (!rankedListeners.length) {
-        console.log("No listener yet. Retrying...");
-        try {
-          await sleep(RETRY_DELAY, signal);
-        } catch (err) {
-          if (err && err.message === "ABORTED") {
-            return { success: false, reason: "ABORTED" };
-          }
-        }
-        continue;
+    const startTime = Date.now();
+    while (Date.now() - startTime < MAX_WAIT) {
+      if (signal?.aborted) {
+        console.log(`[matchingEngine] Matching aborted for ${supportUid}`);
+        return { success: false, reason: "ABORTED" };
       }
 
-      for (const candidate of rankedListeners) {
-        if (signal?.aborted) {
-          return { success: false, reason: "ABORTED" };
+      try {
+        const rankedListeners = await findRankedListeners({
+          uid: supportUid,
+          ...supportProfile,
+        });
+
+        if (!rankedListeners.length) {
+          console.log(`[matchingEngine] No listener yet for ${supportUid}. Retrying...`);
+          try {
+            await sleep(RETRY_DELAY, signal);
+          } catch (err) {
+            if (err && err.message === "ABORTED") {
+              return { success: false, reason: "ABORTED" };
+            }
+          }
+          continue;
         }
 
-        const { listener, score } = candidate;
-
-        reservedListener = null;
-
-        try {
-          await reserveWaitingUser(listener.uid);
-
-          reservedListener = listener;
-
-          const { roomId } = await createChatRoom(
-            {
-              uid: supportUser.uid,
-              ...supportProfile,
-            },
-            listener,
-            score
-          );
-
+        for (const { listener, score } of rankedListeners) {
           if (signal?.aborted) {
-            // release the reserved listener before exiting
-            try {
-              await releaseWaitingUser(reservedListener.uid);
-            } catch (_) {}
-
+            console.log(`[matchingEngine] Matching aborted for ${supportUid}`);
             return { success: false, reason: "ABORTED" };
           }
 
-          await Promise.all([
-            assignRoom(supportUser.uid, roomId),
-            assignRoom(listener.uid, roomId),
-          ]);
-
-          console.log("Match successful");
-
-          return {
-            success: true,
-            roomId,
-            listener,
-            score,
-          };
-        } catch (err) {
-          if (!reservedListener) {
+          if (!listener?.uid) {
             continue;
           }
 
           try {
-            await releaseWaitingUser(reservedListener.uid);
-          } catch (_) {}
+            const match = await claimListenerAndCreateRoom(
+              { uid: supportUid, ...supportProfile },
+              listener,
+              score
+            );
 
-          reservedListener = null;
+            if (!match) continue;
+            return { success: true, roomId: match.roomId, listener, score };
+          } catch (err) {
+            console.warn(`[matchingEngine] Match claim failed for ${listener.uid}`, err);
+          }
         }
-      }
 
-      console.log("Listeners busy. Retrying...");
-      try {
-        await sleep(RETRY_DELAY, signal);
-      } catch (err) {
-        if (err && err.message === "ABORTED") {
-          return { success: false, reason: "ABORTED" };
-        }
-      }
-    } catch (error) {
-      if (reservedListener) {
+        console.log(`[matchingEngine] No remaining candidates for ${supportUid}; retrying...`);
         try {
-          await releaseWaitingUser(reservedListener.uid);
-        } catch (_) {}
-      }
+          await sleep(RETRY_DELAY, signal);
+        } catch (sleepErr) {
+          if (sleepErr && sleepErr.message === "ABORTED") {
+            return { success: false, reason: "ABORTED" };
+          }
+        }
+      } catch (error) {
+        console.error(`[matchingEngine] Matching loop failed for ${supportUid}`, error);
 
-      console.error(error);
-
-      try {
-        await sleep(RETRY_DELAY, signal);
-      } catch (err) {
-        if (err && err.message === "ABORTED") {
-          return { success: false, reason: "ABORTED" };
+        try {
+          await sleep(RETRY_DELAY, signal);
+        } catch (sleepErr) {
+          if (sleepErr && sleepErr.message === "ABORTED") {
+            return { success: false, reason: "ABORTED" };
+          }
         }
       }
     }
+  } finally {
+    inFlightMatchingByUser.delete(supportUid);
   }
 
   return {

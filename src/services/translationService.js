@@ -60,7 +60,7 @@ export async function translateMessage(
         translatedText: data.translatedText || text,
         warning: data.warning || "",
       };
-    } catch (_error) {
+    } catch {
       return {
         translatedText: text,
         warning: "Translation service unavailable.",
