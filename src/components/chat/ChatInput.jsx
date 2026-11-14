@@ -83,15 +83,15 @@ export default function ChatInput({ onSend, onVoiceSend, sending = false, onTypi
           const next = event.target.value;
           setMessage(next);
           next.trim() ? onTyping?.() : onTypingStop?.();
-        }} onBlur={() => onTypingStop?.()} onKeyDown={handleKeyDown} placeholder={recording ? "Recording voice message…" : "Type your message..."} disabled={recording || uploadingVoice} className="max-h-40 flex-1 resize-none rounded-2xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100" />
+        }} onBlur={() => onTypingStop?.()} onKeyDown={handleKeyDown} placeholder={recording ? "Recording a voice note…" : "Write a message…"} disabled={recording || uploadingVoice} className="max-h-40 flex-1 resize-none rounded-2xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100" />
         {recording ? (
-          <button type="button" onClick={stopRecording} className="inline-flex items-center gap-2 rounded-2xl bg-rose-600 px-4 py-3 font-semibold text-white hover:bg-rose-700"><Square size={18} fill="currentColor" /> {recordingSeconds}s</button>
+          <button type="button" onClick={stopRecording} className="inline-flex items-center gap-2 rounded-2xl bg-rose-600 px-4 py-3 font-semibold text-white hover:bg-rose-700"><Square size={18} fill="currentColor" /> {recordingSeconds}s · Stop</button>
         ) : (
           <button type="button" onClick={startRecording} disabled={sending || uploadingVoice} className="rounded-xl p-3 text-slate-500 hover:bg-slate-100 hover:text-indigo-600 disabled:opacity-50" aria-label="Record voice message"><Mic size={22} /></button>
         )}
         <button type="button" onClick={handleSend} disabled={sending || uploadingVoice || !message.trim() || recording} className="rounded-2xl bg-indigo-600 px-4 py-3 font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300" aria-label="Send message">{sending ? "…" : <Send size={20} />}</button>
       </div>
-      <p className="mt-2 text-xs text-slate-400">{uploadingVoice ? "Uploading your voice message…" : "Enter to send · Shift + Enter for a new line · Hold a private voice conversation with care."}</p>
+      <p className="mt-2 text-xs text-slate-400">{uploadingVoice ? "Sending your voice note safely…" : "Enter to send · Shift + Enter for a new line · Your voice note is shared only in this chat."}</p>
     </div>
   );
 }
