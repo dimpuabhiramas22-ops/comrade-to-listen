@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Mic, Send, Smile, Square } from "lucide-react";
+import { Mic, Send, Smile, Square, X } from "lucide-react";
 
 const EMOJIS = ["🙂", "😊", "😌", "💙", "❤️", "🤝", "🌿", "🙏", "✨", "👋", "😔", "😢"];
 
@@ -12,6 +12,7 @@ export default function ChatInput({ onSend, onVoiceSend, sending = false, onTypi
   const recorderRef = useRef(null);
   const chunksRef = useRef([]);
   const intervalRef = useRef(null);
+  const discardRecordingRef = useRef(false);
 
   useEffect(() => () => {
     clearInterval(intervalRef.current);
@@ -37,6 +38,7 @@ export default function ChatInput({ onSend, onVoiceSend, sending = false, onTypi
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
       chunksRef.current = [];
+      discardRecordingRef.current = false;
       recorderRef.current = recorder;
       recorder.ondataavailable = (event) => event.data.size && chunksRef.current.push(event.data);
       recorder.onstop = async () => {
@@ -44,7 +46,7 @@ export default function ChatInput({ onSend, onVoiceSend, sending = false, onTypi
         setRecording(false);
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
         stream.getTracks().forEach((track) => track.stop());
-        if (blob.size) {
+        if (blob.size && !discardRecordingRef.current) {
           setUploadingVoice(true);
           try { await onVoiceSend?.(blob, recordingSeconds); } finally { setUploadingVoice(false); }
         }
@@ -59,8 +61,9 @@ export default function ChatInput({ onSend, onVoiceSend, sending = false, onTypi
     }
   }
 
-  function stopRecording() {
-    recorderRef.current?.state === "recording" && recorderRef.current.stop();
+  function stopRecording(discard = false) {
+    discardRecordingRef.current = discard;
+    if (recorderRef.current?.state === "recording") recorderRef.current.stop();
   }
 
   function handleKeyDown(event) {
@@ -85,13 +88,18 @@ export default function ChatInput({ onSend, onVoiceSend, sending = false, onTypi
           next.trim() ? onTyping?.() : onTypingStop?.();
         }} onBlur={() => onTypingStop?.()} onKeyDown={handleKeyDown} placeholder={recording ? "Recording a voice note…" : "Write a message…"} disabled={recording || uploadingVoice} className="max-h-40 flex-1 resize-none rounded-2xl border border-slate-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100" />
         {recording ? (
-          <button type="button" onClick={stopRecording} className="inline-flex items-center gap-2 rounded-2xl bg-rose-600 px-4 py-3 font-semibold text-white hover:bg-rose-700"><Square size={18} fill="currentColor" /> {recordingSeconds}s · Stop</button>
+          <div className="flex items-center gap-2 rounded-2xl bg-rose-50 px-2 py-1 text-rose-700">
+            <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-rose-500" />
+            <span className="text-sm font-semibold">{recordingSeconds}s</span>
+            <button type="button" onClick={() => stopRecording(true)} className="rounded-xl p-2 hover:bg-rose-100" aria-label="Discard voice note"><X size={18} /></button>
+            <button type="button" onClick={() => stopRecording(false)} className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700"><Square size={16} fill="currentColor" /> Send</button>
+          </div>
         ) : (
-          <button type="button" onClick={startRecording} disabled={sending || uploadingVoice} className="rounded-xl p-3 text-slate-500 hover:bg-slate-100 hover:text-indigo-600 disabled:opacity-50" aria-label="Record voice message"><Mic size={22} /></button>
+          <button type="button" onClick={startRecording} disabled={sending || uploadingVoice} className="rounded-xl p-3 text-slate-500 hover:bg-slate-100 hover:text-indigo-600 disabled:opacity-50" aria-label="Record voice message" title="Record a voice note"><Mic size={22} /></button>
         )}
         <button type="button" onClick={handleSend} disabled={sending || uploadingVoice || !message.trim() || recording} className="rounded-2xl bg-indigo-600 px-4 py-3 font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300" aria-label="Send message">{sending ? "…" : <Send size={20} />}</button>
       </div>
-      <p className="mt-2 text-xs text-slate-400">{uploadingVoice ? "Sending your voice note safely…" : "Enter to send · Shift + Enter for a new line · Your voice note is shared only in this chat."}</p>
+      <p className="mt-2 text-xs text-slate-400">{uploadingVoice ? recording ? "Recording a private voice note — send it when you are ready." : uploadingVoice ? "Sending your voice note safely…" : "Enter to send · Shift + Enter for a new line · Your voice note is shared only in this chat."}</p>
     </div>
   );
 }
