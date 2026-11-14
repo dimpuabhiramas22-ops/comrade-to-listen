@@ -18,6 +18,7 @@ export default function Chat() {
   const [ending, setEnding] = useState(false);
   const [chatEnded, setChatEnded] = useState(false);
   const [otherTyping, setOtherTyping] = useState(false);
+  const [partnerId, setPartnerId] = useState(null);
   const typingStartTimerRef = useRef(null);
   const typingStopTimerRef = useRef(null);
   const typingActiveRef = useRef(false);
@@ -47,6 +48,7 @@ export default function Chat() {
       }
       const otherUserId = room.users?.find((uid) => uid !== currentUser?.uid);
       setOtherTyping(Boolean(room.typing?.[otherUserId]));
+      setPartnerId(otherUserId || null);
     });
   }, [chatRoom, currentUser, navigate, resetApp]);
 
@@ -94,7 +96,7 @@ export default function Chat() {
   }
 
   return <div className="flex h-screen flex-col bg-slate-100">
-    <ChatHeader onEndChat={handleEndChat} ending={ending} />
+    <ChatHeader onEndChat={handleEndChat} ending={ending} roomId={chatRoom} currentUserId={currentUser?.uid} partnerId={partnerId} />
     {chatEnded && <div className="bg-red-500 py-2 text-center font-medium text-white">Conversation ended. Returning to Home...</div>}
     <ChatMessages messages={messages} loading={loading} />
     <TypingIndicator isTyping={otherTyping} name={match?.listener?.preferredRole || match?.listener?.role || match?.support?.preferredRole || match?.support?.role || "Anonymous Companion"} />
