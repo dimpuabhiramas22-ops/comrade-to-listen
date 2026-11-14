@@ -13,6 +13,7 @@ export default function VideoCall({ roomId, currentUserId, partnerId, disabled }
   const streamRef = useRef(null);
   const sessionRef = useRef(null);
   const seenCandidates = useRef(new Set());
+  const queuedCandidates = useRef([]);
   const [call, setCall] = useState(null);
   const [error, setError] = useState("");
   const [joining, setJoining] = useState(false);
@@ -37,14 +38,28 @@ export default function VideoCall({ roomId, currentUserId, partnerId, disabled }
     if (!call || !peerRef.current || !sessionRef.current || call.sessionId !== sessionRef.current) return;
     const isCaller = call.from === currentUserId;
     const candidates = isCaller ? call.answerCandidates || [] : call.offerCandidates || [];
-    candidates.forEach(async (candidate) => {
+    const addCandidateWhenReady = async (candidate) => {
+      const peer = peerRef.current;
+      if (!peer) return;
+      if (!peer.remoteDescription?.type) {
+        queuedCandidates.current.push(candidate);
+        return;
+      }
+      try { await peer.addIceCandidate(candidate); } catch (cause) { console.warn("Ignored ICE candidate", cause); }
+    };
+    candidates.forEach((candidate) => {
       const key = candidate.candidate;
       if (seenCandidates.current.has(key)) return;
       seenCandidates.current.add(key);
-      try { await peerRef.current.addIceCandidate(candidate); } catch { /* Candidate can arrive before the remote description. */ }
+      addCandidateWhenReady(candidate);
     });
     if (isCaller && call.status === "accepted" && call.answer && !peerRef.current.currentRemoteDescription) {
-      peerRef.current.setRemoteDescription(call.answer).catch(() => setError("Could not connect the call."));
+      peerRef.current.setRemoteDescription(call.answer)
+        .then(async () => {
+          const queued = queuedCandidates.current.splice(0);
+          await Promise.all(queued.map(addCandidateWhenReady));
+        })
+        .catch(() => setError("Could not connect the call."));
     }
     if (["declined", "ended"].includes(call.status)) cleanUp();
   }, [call, currentUserId]);
@@ -92,6 +107,8 @@ export default function VideoCall({ roomId, currentUserId, partnerId, disabled }
       const stream = await getStream(); const peer = makePeer("answerCandidates");
       stream.getTracks().forEach((track) => peer.addTrack(track, stream));
       await peer.setRemoteDescription(call.offer);
+      const queued = queuedCandidates.current.splice(0);
+      await Promise.all(queued.map((candidate) => peer.addIceCandidate(candidate)));
       const answer = await peer.createAnswer(); await peer.setLocalDescription(answer);
       await updateDoc(roomRef, { "videoCall.status": "accepted", "videoCall.answer": { type: answer.type, sdp: answer.sdp } });
     } catch (cause) { cleanUp(); setError(cause.name === "NotAllowedError" ? "Allow camera and microphone access to accept." : "Could not accept the call."); }
