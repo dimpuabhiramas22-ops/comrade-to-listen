@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAppContext } from "../context/AppContext";
 
@@ -8,9 +9,11 @@ import HowItWorks from "../components/home/HowItWorks";
 export default function Home() {
   const navigate = useNavigate();
 
-  const {
-    setUserType,
-  } = useAppContext();
+  const { setUserType, resetJourney } = useAppContext();
+
+  useEffect(() => {
+    resetJourney();
+  }, [resetJourney]);
 
   function handleSupport() {
     // Set current flow
