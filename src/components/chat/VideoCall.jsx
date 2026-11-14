@@ -98,7 +98,16 @@ export default function VideoCall({ roomId, currentUserId, partnerId, disabled }
     finally { setJoining(false); }
   }
 
-  async function leave(status = "ended") {\n    try {\n      if (roomRef) await updateDoc(roomRef, { "videoCall.status": status });\n    } catch (cause) {\n      console.warn("Could not update the video call status.", cause);\n      setError("The call closed on this screen. Please try again if your companion still sees it.");\n    } finally {\n      cleanUp();\n    }\n  }
+  async function leave(status = "ended") {
+    try {
+      if (roomRef) await updateDoc(roomRef, { "videoCall.status": status });
+    } catch (cause) {
+      console.warn("Could not update the video call status.", cause);
+      setError("The call closed on this screen. Please try again if your companion still sees it.");
+    } finally {
+      cleanUp();
+    }
+  }
   const incoming = call?.status === "requested" && call.to === currentUserId;
   const outgoing = call?.status === "requested" && call.from === currentUserId;
   const active = call?.status === "accepted" && [call.from, call.to].includes(currentUserId);
