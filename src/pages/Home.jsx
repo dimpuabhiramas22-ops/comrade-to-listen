@@ -13,7 +13,9 @@ export default function Home() {
 
   useEffect(() => {
     resetJourney();
-  }, [resetJourney]);
+  // A new home visit starts a fresh anonymous-support journey.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function handleSupport() {
     // Set current flow
