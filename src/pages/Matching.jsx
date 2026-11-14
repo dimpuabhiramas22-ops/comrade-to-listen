@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useAppContext } from "../context/AppContext";
 
 import {
   addWaitingUser,
+  removeWaitingUser,
   watchWaitingUser,
 } from "../services/firestoreService";
 
@@ -25,10 +26,14 @@ export default function Matching() {
     setChatRoom,
     setLoading,
     setError,
+    resetJourney,
   } = useAppContext();
 
   const [status, setStatus] = useState("Preparing...");
   const [progress, setProgress] = useState(10);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const abortRef = useRef(null);
+  const cancelRequestedRef = useRef(false);
 
   useEffect(() => {
     if (!currentUser) {
@@ -51,7 +56,9 @@ export default function Matching() {
     }
 
     let cancelled = false;
+    cancelRequestedRef.current = false;
     const abortController = new AbortController();
+    abortRef.current = abortController;
     let navTimeoutId = null;
 
     const unsubscribe = watchWaitingUser(currentUser.uid, (waitingUser) => {
@@ -91,6 +98,11 @@ export default function Matching() {
           userType,
           ...profile,
         });
+
+        if (cancelled || cancelRequestedRef.current) {
+          await removeWaitingUser(currentUser.uid);
+          return;
+        }
 
         if (userType === "listener") {
           setStatus("Waiting for someone who needs support...");
@@ -143,6 +155,7 @@ export default function Matching() {
     return () => {
       cancelled = true;
       abortController.abort();
+      if (abortRef.current === abortController) abortRef.current = null;
       unsubscribe();
       if (navTimeoutId) clearTimeout(navTimeoutId);
     };
@@ -159,11 +172,28 @@ export default function Matching() {
     setError,
   ]);
 
+  async function handleCancel() {
+    if (!currentUser?.uid || isCancelling) return;
+    setIsCancelling(true);
+    cancelRequestedRef.current = true;
+    abortRef.current?.abort();
+    try {
+      await removeWaitingUser(currentUser.uid);
+    } catch (error) {
+      console.warn("Could not remove waiting user", error);
+    } finally {
+      resetJourney();
+      navigate("/", { replace: true });
+    }
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,rgba(255,255,255,.96),transparent_34rem)] px-5">
       <SearchingCard
         progress={progress}
         status={status}
+        onCancel={handleCancel}
+        isCancelling={isCancelling}
       />
     </div>
   );
