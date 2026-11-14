@@ -62,7 +62,7 @@ export function AppProvider({ children }) {
    * Keeps one function responsible for resetting
    * the application state.
    */
-  function resetApp() {
+  // Clears selections and the active journey while preserving anonymous authentication.\n  function resetJourney() {\n    setUserType(null);\n    resetSupportProfile();\n    resetListenerProfile();\n    setMatch(null);\n    setChatRoom(null);\n    setLoading(false);\n    setError(null);\n  }\n\n  function resetApp() {
     setUserType(null);
 
     resetSupportProfile();
@@ -112,6 +112,7 @@ export function AppProvider({ children }) {
       setError,
 
       // Helpers
+      resetJourney,
       resetApp,
     }),
     [
