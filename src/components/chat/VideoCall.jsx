@@ -14,6 +14,8 @@ export default function VideoCall({ roomId, currentUserId, partnerId, disabled }
   const sessionRef = useRef(null);
   const seenCandidates = useRef(new Set());
   const queuedCandidates = useRef([]);
+  const pendingLocalCandidates = useRef([]);
+  const callReadyRef = useRef(false);
   const [call, setCall] = useState(null);
   const [error, setError] = useState("");
   const [joining, setJoining] = useState(false);
@@ -27,6 +29,8 @@ export default function VideoCall({ roomId, currentUserId, partnerId, disabled }
     if (localRef.current) localRef.current.srcObject = null;
     if (remoteRef.current) remoteRef.current.srcObject = null;
     seenCandidates.current = new Set();
+    pendingLocalCandidates.current = [];
+    callReadyRef.current = false;
   }
 
   useEffect(() => {
@@ -78,9 +82,15 @@ export default function VideoCall({ roomId, currentUserId, partnerId, disabled }
     peerRef.current = peer;
     peer.ontrack = (event) => { if (remoteRef.current) remoteRef.current.srcObject = event.streams[0]; };
     peer.onicecandidate = (event) => {
-      if (event.candidate && roomRef && sessionRef.current) {
-        updateDoc(roomRef, { ["videoCall." + side]: arrayUnion(event.candidate.toJSON()) }).catch(() => {});
+      if (!event.candidate) return;
+      const candidate = event.candidate.toJSON();
+      if (!callReadyRef.current || !roomRef) {
+        pendingLocalCandidates.current.push(candidate);
+        return;
       }
+      updateDoc(roomRef, { ["videoCall." + side]: arrayUnion(candidate) }).catch((cause) => {
+        console.warn("Could not share video connection details.", cause);
+      });
     };
     return peer;
   }
@@ -90,11 +100,13 @@ export default function VideoCall({ roomId, currentUserId, partnerId, disabled }
     setJoining(true); setError("");
     try {
       const stream = await getStream();
+      const sessionId = crypto.randomUUID(); sessionRef.current = sessionId;
       const peer = makePeer("offerCandidates");
       stream.getTracks().forEach((track) => peer.addTrack(track, stream));
       const offer = await peer.createOffer(); await peer.setLocalDescription(offer);
-      const sessionId = crypto.randomUUID(); sessionRef.current = sessionId;
-      await updateDoc(roomRef, { videoCall: { sessionId, from: currentUserId, to: partnerId, status: "requested", offer: { type: offer.type, sdp: offer.sdp }, offerCandidates: [], answerCandidates: [] } });
+      await updateDoc(roomRef, { videoCall: { sessionId, from: currentUserId, to: partnerId, status: "requested", offer: { type: offer.type, sdp: offer.sdp }, offerCandidates: pendingLocalCandidates.current, answerCandidates: [] } });
+      pendingLocalCandidates.current = [];
+      callReadyRef.current = true;
     } catch (cause) { cleanUp(); setError(cause.name === "NotAllowedError" ? "Allow camera and microphone access to start a video call." : "Could not start the video call."); }
     finally { setJoining(false); }
   }
@@ -104,6 +116,7 @@ export default function VideoCall({ roomId, currentUserId, partnerId, disabled }
     setJoining(true); setError("");
     try {
       sessionRef.current = call.sessionId;
+      callReadyRef.current = true;
       const stream = await getStream(); const peer = makePeer("answerCandidates");
       stream.getTracks().forEach((track) => peer.addTrack(track, stream));
       await peer.setRemoteDescription(call.offer);
